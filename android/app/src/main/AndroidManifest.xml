@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.lan_phone">
+    package="com.example.lanphone.app">
 
     <!-- ============================================================ -->
     <!-- 1. أذونات الشبكة والبث المحلي (Network & Multicast) -->
