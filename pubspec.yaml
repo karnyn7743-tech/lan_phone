@@ -87,7 +87,7 @@ dependencies:
   audio_session: ^0.1.22
   flutter_ringtone_player: ^4.0.0+4
 
-  # ✅ ترقية record من 5.x إلى 6.x (يحل مشكلة record_linux)
+  # ✅ ترقية record إلى الإصدار 6 المباشر
   record: ^5.1.2
   
   just_audio: ^0.9.42
@@ -97,7 +97,6 @@ dependencies:
   # ============================================
   uuid: ^4.5.1
   device_info_plus: ^11.1.0
-  # معرّف أندرويد الحقيقي (16 hex، فريد لكل جهاز)
   android_id: ^0.4.0
   intl: ^0.20.2
   local_auth: ^2.3.0
