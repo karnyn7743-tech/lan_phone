@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants.dart';
@@ -12,13 +13,10 @@ import 'global_search_screen.dart';
 import 'qr_display_screen.dart';
 import 'qr_scanner_screen.dart';
 import 'settings_screen.dart';
+import 'tabs/calls_tab.dart';
 import 'tabs/conversations_tab.dart';
 import 'tabs/devices_tab.dart';
-import 'tabs/calls_tab.dart';
 
-/// ============================================================
-/// الشاشة الرئيسية
-/// ============================================================
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -26,10 +24,10 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _permissionsChecked = false;
+  DateTime? _lastBackPressTime;
 
   @override
   void initState() {
@@ -46,10 +44,6 @@ class _HomeScreenState extends State<HomeScreen>
     _tabController.dispose();
     super.dispose();
   }
-
-  // ============================================
-  // === الأذونات ===
-  // ============================================
 
   Future<void> _ensureDiscoveryPermissions() async {
     if (_permissionsChecked) return;
@@ -74,29 +68,17 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  // ============================================
-  // === البث الصوتي (جديد) ===
-  // ============================================
-
   void _openBroadcast() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const BroadcastScreen()),
     );
   }
 
-  // ============================================
-  // === البحث العالمي ===
-  // ============================================
-
   void _openGlobalSearch() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const GlobalSearchScreen()),
     );
   }
-
-  // ============================================
-  // === QR ===
-  // ============================================
 
   void _showQrOptions() {
     showModalBottomSheet(
@@ -202,10 +184,6 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  // ============================================
-  // === الأزرار الأخرى ===
-  // ============================================
-
   void _openSettings() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const SettingsScreen()),
@@ -218,17 +196,9 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ============================================
-  // === FAB ===
-  // ============================================
-
   void _onFabPressed() {
     _tabController.animateTo(2);
   }
-
-  // ============================================
-  // === قائمة إضافية ===
-  // ============================================
 
   void _showMoreMenu() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -304,170 +274,185 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ============================================
-  // === الواجهة ===
-  // ============================================
-
   @override
   Widget build(BuildContext context) {
-    final discovery = context.watch<DeviceDiscovery>();
-    final broadcast = context.watch<BroadcastService>();
-    final onlineCount = discovery.onlineDevices.length;
-    final myNumber = discovery.deviceNumber;
+    final onlineCount = context.select<DeviceDiscovery, int>(
+      (d) => d.onlineDevices.length,
+    );
+    final myNumber = context.select<DeviceDiscovery, String>(
+      (d) => d.deviceNumber,
+    );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            const Text(AppConstants.appName),
-            if (myNumber.isNotEmpty) ...[
-              const SizedBox(width: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  myNumber,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 1.0,
-                    fontFeatures: [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          labelStyle: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          ),
-          unselectedLabelStyle: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-          ),
-          tabs: [
-            const Tab(
-              child: _TabContent(
-                icon: Icons.chat_bubble_outline,
-                label: 'المحادثات',
-              ),
-            ),
-            const Tab(
-              child: _TabContent(
-                icon: Icons.call_outlined,
-                label: 'المكالمات',
-              ),
-            ),
-            Tab(
-              child: _TabContent(
-                icon: Icons.devices_outlined,
-                label: 'الأجهزة',
-                badge: onlineCount > 0 ? onlineCount : null,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          // البحث
-          IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: 'البحث',
-            onPressed: _openGlobalSearch,
-          ),
+    final isBroadcasting = context.select<BroadcastService, bool>(
+      (b) => b.isBroadcasting,
+    );
+    final isListening = context.select<BroadcastService, bool>(
+      (b) => b.isListening,
+    );
 
-          // ✅ البث الصوتي (مع شارة حمراء إذا كان نشطًا)
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.podcasts),
-                tooltip: 'البث الصوتي',
-                onPressed: _openBroadcast,
-              ),
-              if (broadcast.isBroadcasting)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: AppTheme.errorColor,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 1.5),
-                    ),
-                  ),
-                ),
-              if (broadcast.isListening)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: AppTheme.successColor,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 1.5),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-
-          // قائمة إضافية
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            tooltip: 'المزيد',
-            onPressed: _showMoreMenu,
-          ),
-        ],
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: const [
-          ConversationsTab(),
-          CallsTab(),
-          DevicesTab(),
-        ],
-      ),
-      floatingActionButton: AnimatedBuilder(
-        animation: _tabController,
-        builder: (context, _) {
-          final showFab = _tabController.index != 1;
-          return AnimatedScale(
-            scale: showFab ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 200),
-            child: FloatingActionButton(
-              onPressed: _onFabPressed,
-              backgroundColor: AppTheme.primaryColor,
-              foregroundColor: Colors.white,
-              tooltip: 'محادثة جديدة',
-              child: const Icon(Icons.edit_outlined),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final now = DateTime.now();
+        if (_lastBackPressTime == null ||
+            now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+          _lastBackPressTime = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('اضغط مرة أخرى للخروج من التطبيق'),
+              duration: Duration(seconds: 2),
             ),
           );
-        },
+        } else {
+          SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Row(
+            children: [
+              const Text(AppConstants.appName),
+              if (myNumber.isNotEmpty) ...[
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    myNumber,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: 1.0,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          bottom: TabBar(
+            controller: _tabController,
+            indicatorColor: Colors.white,
+            indicatorWeight: 3,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            labelStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+            unselectedLabelStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+            tabs: [
+              const Tab(
+                child: _TabContent(
+                  icon: Icons.chat_bubble_outline,
+                  label: 'المحادثات',
+                ),
+              ),
+              const Tab(
+                child: _TabContent(
+                  icon: Icons.call_outlined,
+                  label: 'المكالمات',
+                ),
+              ),
+              Tab(
+                child: _TabContent(
+                  icon: Icons.devices_outlined,
+                  label: 'الأجهزة',
+                  badge: onlineCount > 0 ? onlineCount : null,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: 'البحث',
+              onPressed: _openGlobalSearch,
+            ),
+            Stack(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.podcasts),
+                  tooltip: 'البحث الصوتي',
+                  onPressed: _openBroadcast,
+                ),
+                if (isBroadcasting)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: AppTheme.errorColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                    ),
+                  ),
+                if (isListening)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: AppTheme.successColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            IconButton(
+              icon: const Icon(Icons.more_vert),
+              tooltip: 'المزيد',
+              onPressed: _showMoreMenu,
+            ),
+          ],
+        ),
+        body: TabBarView(
+          controller: _tabController,
+          children: const [
+            ConversationsTab(),
+            CallsTab(),
+            DevicesTab(),
+          ],
+        ),
+        floatingActionButton: AnimatedBuilder(
+          animation: _tabController,
+          builder: (context, _) {
+            final showFab = _tabController.index != 1;
+            return AnimatedScale(
+              scale: showFab ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 200),
+              child: FloatingActionButton(
+                onPressed: _onFabPressed,
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                tooltip: 'محادثة جديدة',
+                child: const Icon(Icons.edit_outlined),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
 }
-
-// ============================================================
-// === عناصر مساعدة ===
-// ============================================================
 
 class _TabContent extends StatelessWidget {
   final IconData icon;
