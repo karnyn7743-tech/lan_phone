@@ -356,21 +356,29 @@ class DeviceDiscovery extends ChangeNotifier {
   // ============================================
 
   Future<void> _openUdpSocket() async {
-    _udpSocket = await RawDatagramSocket.bind(
-      InternetAddress.anyIPv4,
-      AppConstants.discoveryPort,
-      reuseAddress: true,
-      reusePort: true,
-    );
+    try {
+      // إغلاق أي Socket سابق إن وجد منعاً لحدوث الانهيار عند إعادة الفتح
+      _udpSocket?.close();
+      _udpSocket = null;
 
-    _udpSocket!.broadcastEnabled = true;
-    _udpSocket!.multicastHops = 255;
+      _udpSocket = await RawDatagramSocket.bind(
+        InternetAddress.anyIPv4,
+        AppConstants.discoveryPort,
+        reuseAddress: true,
+        reusePort: true,
+      );
 
-    _udpSocket!.listen(
-      _onUdpEvent,
-      onError: (e) => debugPrint('[Discovery] UDP error: $e'),
-      onDone: () => debugPrint('[Discovery] UDP closed'),
-    );
+      _udpSocket!.broadcastEnabled = true;
+      _udpSocket!.multicastHops = 255;
+
+      _udpSocket!.listen(
+        _onUdpEvent,
+        onError: (e) => debugPrint('[Discovery] UDP error: $e'),
+        onDone: () => debugPrint('[Discovery] UDP closed'),
+      );
+    } catch (e) {
+      debugPrint('[Discovery] Socket bind failed: $e');
+    }
   }
 
   void _onUdpEvent(RawSocketEvent event) {
