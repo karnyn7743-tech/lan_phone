@@ -1,12 +1,10 @@
-import 'dart:async';
+Import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:multicast_dns/multicast_dns.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -16,13 +14,10 @@ import 'discovered_device.dart';
 
 /// ============================================================
 /// خدمة اكتشاف الأجهزة على الشبكة المحلية
-/// مع دعم رقم الاتصال (مثل رقم SIM) وقفل Wi-Fi Multicast
+/// مع دعم رقم الاتصال (مثل رقم SIM)
 /// ============================================================
 class DeviceDiscovery extends ChangeNotifier {
   DeviceDiscovery();
-
-  static const MethodChannel _wifiChannel =
-      MethodChannel('lan_phone/wifi_lock');
 
   // ============================================
   // === الحالة الداخلية ===
@@ -72,12 +67,6 @@ class DeviceDiscovery extends ChangeNotifier {
     if (_isRunning) return;
 
     try {
-      // 0) طلب الأذونات البرمجية اللازمة للشبكة والموقع (Android 13+)
-      await _requestPermissions();
-
-      // 0.1) فتح قفل Multicast لمنع أندرويد من حجب حزم UDP
-      await _acquireMulticastLock();
-
       // 1) تحميل/إنشاء الهوية
       await _loadOrCreateIdentity();
 
@@ -146,8 +135,6 @@ class DeviceDiscovery extends ChangeNotifier {
     _udpSocket?.close();
     _udpSocket = null;
 
-    await _releaseMulticastLock();
-
     _isRunning = false;
     notifyListeners();
   }
@@ -156,39 +143,6 @@ class DeviceDiscovery extends ChangeNotifier {
   void dispose() {
     stop();
     super.dispose();
-  }
-
-  // ============================================
-  // === الأذونات وقفل Wi-Fi Multicast ===
-  // ============================================
-
-  Future<void> _requestPermissions() async {
-    try {
-      await [
-        Permission.location,
-        Permission.nearbyWifiDevices,
-      ].request();
-    } catch (e) {
-      debugPrint('[Discovery] Permission request error: $e');
-    }
-  }
-
-  Future<void> _acquireMulticastLock() async {
-    if (!Platform.isAndroid) return;
-    try {
-      await _wifiChannel.invokeMethod('acquireMulticastLock');
-      debugPrint('[Discovery] Multicast lock acquired');
-    } catch (e) {
-      debugPrint('[Discovery] Multicast lock not supported or failed: $e');
-    }
-  }
-
-  Future<void> _releaseMulticastLock() async {
-    if (!Platform.isAndroid) return;
-    try {
-      await _wifiChannel.invokeMethod('releaseMulticastLock');
-      debugPrint('[Discovery] Multicast lock released');
-    } catch (_) {}
   }
 
   // ============================================
@@ -227,17 +181,21 @@ class DeviceDiscovery extends ChangeNotifier {
 
   /// توليد رقم اتصال فريد (4 أرقام)
   Future<String> _generateUniqueNumber() async {
+    // 1) اجمع كل الأرقام المستخدمة حاليًا
     final usedNumbers = <String>{};
 
+    // من الأجهزة المكتشفة في الذاكرة
     for (final d in _devices.values) {
       if (d.hasValidNumber) usedNumbers.add(d.number);
     }
 
+    // من قاعدة البيانات
     try {
       final dbNumbers = await DatabaseHelper.instance.getAllUsedNumbers();
       usedNumbers.addAll(dbNumbers);
     } catch (_) {}
 
+    // 2) حاول عدة مرات لتوليد رقم غير مستخدم
     final random = Random.secure();
     for (var i = 0; i < AppConstants.numberGenerationRetries; i++) {
       final candidate = (AppConstants.numberMin +
@@ -251,6 +209,7 @@ class DeviceDiscovery extends ChangeNotifier {
       }
     }
 
+    // 3) إذا فشلنا (نادر جدًا) → استخدم رقمًا مشتقًا من deviceId
     final hash = _deviceId.hashCode.abs();
     final fallback = (AppConstants.numberMin +
             (hash % (AppConstants.numberMax - AppConstants.numberMin + 1)))
@@ -279,6 +238,7 @@ class DeviceDiscovery extends ChangeNotifier {
       return false;
     }
 
+    // تحقق: هل الرقم مستخدم من جهاز آخر؟
     final usedByOther = _numberToDeviceId.containsKey(newNumber) &&
         _numberToDeviceId[newNumber] != _deviceId;
     if (usedByOther) {
@@ -317,8 +277,7 @@ class DeviceDiscovery extends ChangeNotifier {
         final name = iface.name.toLowerCase();
         if (name.contains('wlan') ||
             name.contains('wifi') ||
-            name.contains('en0') ||
-            name.contains('ap')) {
+            name.contains('en0')) {
           for (final addr in iface.addresses) {
             if (_isPrivateIp(addr.address)) return addr.address;
           }
@@ -360,11 +319,11 @@ class DeviceDiscovery extends ChangeNotifier {
       InternetAddress.anyIPv4,
       AppConstants.discoveryPort,
       reuseAddress: true,
-      reusePort: true,
+      reusePort: false,
     );
 
     _udpSocket!.broadcastEnabled = true;
-    _udpSocket!.multicastHops = 255;
+    _udpSocket!.multicastHops = 1;
 
     _udpSocket!.listen(
       _onUdpEvent,
@@ -396,7 +355,7 @@ class DeviceDiscovery extends ChangeNotifier {
     _broadcast({
       'type': AppConstants.msgAnnounce,
       'deviceId': _deviceId,
-      'number': _deviceNumber,
+      'number': _deviceNumber, // ← جديد
       'name': _deviceName,
       'ip': _localIp,
       'port': AppConstants.signalingPort,
@@ -448,6 +407,7 @@ class DeviceDiscovery extends ChangeNotifier {
     final deviceId = data['deviceId'] as String?;
     if (deviceId == null) return;
 
+    // تجاهل نبضاتنا
     if (deviceId == _deviceId) return;
 
     switch (type) {
@@ -473,13 +433,20 @@ class DeviceDiscovery extends ChangeNotifier {
     final port = (data['port'] as int?) ?? AppConstants.signalingPort;
     final caps = (data['capabilities'] as List?)?.cast<String>() ?? const [];
 
+    // ============================================
+    // === كشف التعارض في الأرقام ===
+    // ============================================
     if (number.isNotEmpty && number == _deviceNumber) {
+      // جهاز آخر يستخدم نفس رقمنا!
+      // القاعدة: مقارنة deviceId نصيًا. الأكبر يُعيد التوليد.
       if (_deviceId.compareTo(deviceId) > 0) {
         debugPrint(
           '[Discovery] Number conflict! We ($_deviceId) regenerate, '
           'peer ($deviceId) keeps $number',
         );
+        // نحن الأكبر → نُعيد التوليد
         await _regenerateNumber();
+        // لا نحفظ الجهاز الآخر برقمنا القديم الآن — سنستقبل نبضته القادمة
       } else {
         debugPrint(
           '[Discovery] Number conflict! Peer ($deviceId) should regenerate, '
@@ -490,6 +457,7 @@ class DeviceDiscovery extends ChangeNotifier {
 
     final isNew = !_devices.containsKey(deviceId);
 
+    // احفظ الخريطة العكسية
     if (number.isNotEmpty) {
       _numberToDeviceId[number] = deviceId;
     }
@@ -507,6 +475,7 @@ class DeviceDiscovery extends ChangeNotifier {
 
     _devices[deviceId] = device;
 
+    // حفظ في قاعدة البيانات
     await DatabaseHelper.instance.upsertDevice({
       'device_id': deviceId,
       'number': number,
@@ -530,6 +499,7 @@ class DeviceDiscovery extends ChangeNotifier {
   Future<void> _handleBye(String deviceId) async {
     if (_devices.containsKey(deviceId)) {
       final old = _devices[deviceId]!;
+      // احذف الرقم من الخريطة العكسية
       if (old.hasValidNumber) {
         _numberToDeviceId.remove(old.number);
       }
@@ -538,17 +508,22 @@ class DeviceDiscovery extends ChangeNotifier {
     }
   }
 
+  /// إعادة توليد الرقم عند التعارض
   Future<void> _regenerateNumber() async {
+    // احذف رقمنا القديم من الخريطة العكسية
     _numberToDeviceId.remove(_deviceNumber);
 
+    // ولّد رقمًا جديدًا
     final newNumber = await _generateUniqueNumber();
     _deviceNumber = newNumber;
 
+    // احفظ
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(AppConstants.keyDeviceNumber, newNumber);
 
     debugPrint('[Discovery] New number: $newNumber');
 
+    // بثّ النبضة فورًا بالرقم الجديد
     _sendAnnounce();
     notifyListeners();
   }
@@ -601,6 +576,7 @@ class DeviceDiscovery extends ChangeNotifier {
           isOnline: false,
         );
 
+        // احفظ في الخريطة العكسية
         if (number.isNotEmpty) {
           _numberToDeviceId[number] = id;
         }
@@ -675,6 +651,7 @@ class DeviceDiscovery extends ChangeNotifier {
 
   DiscoveredDevice? getDevice(String deviceId) => _devices[deviceId];
 
+  /// البحث عن جهاز بالرقم
   DiscoveredDevice? getDeviceByNumber(String number) {
     final deviceId = _numberToDeviceId[number];
     if (deviceId == null) return null;
@@ -686,11 +663,13 @@ class DeviceDiscovery extends ChangeNotifier {
     return d != null && d.isOnline;
   }
 
+  /// هل الرقم موجود بين الأجهزة المتصلة؟
   bool isNumberOnline(String number) {
     final device = getDeviceByNumber(number);
     return device != null && device.isOnline;
   }
 
+  /// كل الأرقام المستخدمة حاليًا (في الذاكرة)
   Set<String> getUsedNumbers() {
     return _devices.values
         .where((d) => d.hasValidNumber)
