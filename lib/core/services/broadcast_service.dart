@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../data/database/database_helper.dart';
 import '../constants.dart';
@@ -91,7 +92,7 @@ class BroadcastService extends ChangeNotifier {
   // ============================================
   final Map<String, RTCPeerConnection> _listenerConnections = {};
 
-  /// معرّف المستمع → اسمه
+  /// معرّف المستمع ← اسمه
   final Map<String, String> _listeners = {};
   Map<String, String> get listeners => Map.unmodifiable(_listeners);
 
@@ -156,6 +157,14 @@ class BroadcastService extends ChangeNotifier {
 
     if (_signaling == null || _discovery == null) {
       debugPrint('[Broadcast] Not attached');
+      return false;
+    }
+
+    // طلب أذونات الميكروفون والأجهزة المجاورة
+    final micStatus = await Permission.microphone.request();
+    final nearbyStatus = await Permission.nearbyWifiDevices.request();
+    if (!micStatus.isGranted) {
+      debugPrint('[Broadcast] Microphone permission denied');
       return false;
     }
 
@@ -511,7 +520,7 @@ class BroadcastService extends ChangeNotifier {
       candidateMap['sdpMLineIndex'] as int?,
     );
 
-    // إذا كنا المُذيع → ابحث عن اتصال المستمع
+    // إذا كنا المُذيع ← ابحث عن اتصال المستمع
     if (isBroadcasting) {
       final pc = _listenerConnections[msg.from];
       if (pc == null) {
@@ -526,7 +535,7 @@ class BroadcastService extends ChangeNotifier {
       return;
     }
 
-    // إذا كنا المستمع → استخدم اتصال المُذيع
+    // إذا كنا المستمع ← استخدم اتصال المُذيع
     if (isListening) {
       final pc = _broadcasterConnection;
       if (pc == null || pc.getRemoteDescription() == null) {
@@ -560,7 +569,7 @@ class BroadcastService extends ChangeNotifier {
   }
 
   // ============================================
-  // === إنشاء اتصال مُذيع → مستمع ===
+  // === إنشاء اتصال مُذيع ← مستمع ===
   // ============================================
 
   Future<RTCPeerConnection> _createBroadcasterConnection(
@@ -573,7 +582,7 @@ class BroadcastService extends ChangeNotifier {
       ],
     });
 
-    // عند وصول ICE محلي → أرسله للمستمع
+    // عند وصول ICE محلي ← أرسله للمستمع
     pc.onIceCandidate = (candidate) async {
       if (candidate.candidate == null) return;
       await _signaling!.sendTo(listenerDeviceId, {
