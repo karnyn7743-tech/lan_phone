@@ -10,8 +10,9 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    
+    <!-- تم تعديل السطر أدناه: إزالة neverForLocation لتمكين اكتشاف الأجهزة على أندرويد 13+ -->
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
-        android:usesPermissionFlags="neverForLocation"
         tools:targetApi="tiramisu" />
 
     <!-- المكالمات والصوت -->
@@ -20,7 +21,11 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.BLUETOOTH"
         android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"
+        tools:targetApi="s" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         tools:targetApi="s" />
 
     <!-- الخلفية والمكالمات -->
@@ -53,7 +58,7 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <!-- ============================================================ -->
-    <!-- === أذونات التخزين والوسائط (معدلة ومحسنة) ===                 -->
+    <!-- === أذونات التخزين والوسائط ===                               -->
     <!-- ============================================================ -->
     <!-- أذونات الوسائط لأجهزة Android 13+ (SDK 33+) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
@@ -65,8 +70,9 @@
     <!-- أذونات التخزين لأجهزة Android 12 وما دون (SDK 32 أو أقل) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+    <!-- تم تعديل السطر أدناه: ترقية maxSdkVersion إلى 32 لدعم أندرويد 11 و 12 -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="30" />
+        android:maxSdkVersion="32" />
 
     <!-- ============================================================ -->
     <!-- === ميزات الأجهزة ===                                         -->
