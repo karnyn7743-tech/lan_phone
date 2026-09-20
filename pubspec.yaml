@@ -1,4 +1,4 @@
-name: lan_phone
+name: lanphone.app
 description: "تطبيق مراسلة ومكالمات صوتية ومرئية عبر شبكة الواي فاي المحلية فقط، بدون إنترنت أو شبكات اتصالات."
 publish_to: 'none'
 version: 1.0.0+1
