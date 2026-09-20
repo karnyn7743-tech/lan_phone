@@ -20,9 +20,9 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.BLUETOOTH"
-        android:maxSdkVersion="30" />
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
-        android:maxSdkVersion="30" />
+        android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"
         tools:targetApi="s" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
@@ -150,7 +150,7 @@
         <!-- ============================================ -->
         <meta-data
             android:name="flutterEmbedding"
-            android:value="2" />
+            android:value="3" />
 
         <!-- === مستقبلات الإشعارات المحلية فقط === -->
         <receiver
