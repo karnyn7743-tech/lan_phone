@@ -1,177 +1,99 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+    package="com.example.lan_phone">
 
     <!-- ============================================================ -->
-    <!-- === الأذونات ===                                              -->
+    <!-- 1. أذونات الشبكة والبث المحلي (Network & Multicast) -->
     <!-- ============================================================ -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- ضروري جداً لمنع النظام من حجب حزم UDP Broadcast على أندرويد 10+ -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
+    <!-- ============================================================ -->
+    <!-- 2. أذونات الصوت والمكالمات الكاميرا (Audio, Video & WebRTC) -->
+    <!-- ============================================================ -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- ============================================================ -->
+    <!-- 3. أذونات الموقع والشبكات المجاورة (Location & Nearby Wifi) -->
+    <!-- ============================================================ -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
-    
-    <!-- تم تعديل السطر أدناه: إزالة neverForLocation لتمكين اكتشاف الأجهزة على أندرويد 13+ -->
-    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
-        tools:targetApi="tiramisu" />
-
-    <!-- المكالمات والصوت -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.BLUETOOTH"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
-        android:maxSdkVersion="28" />
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"
-        tools:targetApi="s" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
-        tools:targetApi="s" />
-
-    <!-- الخلفية والمكالمات -->
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
-    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"
-        tools:targetApi="q" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"
-        tools:targetApi="q" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"
-        tools:targetApi="q" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL"
-        tools:targetApi="34" />
-
-    <!-- البطارية -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-
-    <!-- البصمة -->
-    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-    <uses-permission android:name="android.permission.USE_FINGERPRINT"
-        tools:targetApi="p" />
-
-    <!-- الإشعارات والتنبيهات -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- مخصص لأندرويد 13+ لاكتشاف الأجهزة المجاورة عبر الـ Wi-Fi -->
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" />
 
     <!-- ============================================================ -->
-    <!-- === أذونات التخزين والوسائط ===                               -->
+    <!-- 4. أذونات التخزين والوسائط والملفات (Storage & Media) -->
     <!-- ============================================================ -->
-    <!-- أذونات الوسائط لأجهزة Android 13+ (SDK 33+) -->
+    <!-- لأندرويد 9 وما قبل -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <!-- لأندرويد 13+ (مقسمة حسب نوع الملفات) -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    <!-- إذن اختيار جزء من الصور لأجهزة Android 14+ (SDK 34+) -->
-    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
-
-    <!-- أذونات التخزين لأجهزة Android 12 وما دون (SDK 32 أو أقل) -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <!-- تم تعديل السطر أدناه: ترقية maxSdkVersion إلى 32 لدعم أندرويد 11 و 12 -->
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
 
     <!-- ============================================================ -->
-    <!-- === ميزات الأجهزة ===                                         -->
+    <!-- 5. أذونات الخدمات في الخلفية والإشعارات (Foreground Services & Notifications) -->
+    <!-- ============================================================ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- تفصيل أنواع خدمات الخلفية لأندرويد 10 و 14+ منعاً للانهيار Crash -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- ============================================================ -->
+    <!-- متطلبات العتاد (Hardware Features) - ليست إجبارية لكي يعمل على كل الأجهزة -->
     <!-- ============================================================ -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
     <uses-feature android:name="android.hardware.wifi" android:required="true" />
-    <uses-feature android:name="android.hardware.fingerprint" android:required="false" />
 
-    <!-- ============================================================ -->
-    <!-- === Queries (Android 11+) ===                                -->
-    <!-- ============================================================ -->
-    <queries>
-        <intent><action android:name="android.media.action.IMAGE_CAPTURE" /></intent>
-        <intent><action android:name="android.intent.action.GET_CONTENT" /></intent>
-        <intent><action android:name="android.intent.action.OPEN_DOCUMENT" /></intent>
-        <intent><action android:name="android.intent.action.OPEN_DOCUMENT_TREE" /></intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="https" />
-        </intent>
-    </queries>
-
-    <!-- ============================================================ -->
-    <!-- === صلاحية مخصصة للحزمة ===                                  -->
-    <!-- ============================================================ -->
-    <permission
-        android:name="com.lanphone.app.PERMISSION_CALL"
-        android:protectionLevel="normal" />
-
-    <!-- ============================================================ -->
-    <!-- === التطبيق ===                                              -->
-    <!-- ============================================================ -->
     <application
-        android:label="LanPhone"
+        android:label="Lan Phone"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:networkSecurityConfig="@xml/network_security_config"
-        android:usesCleartextTraffic="true"
-        android:requestLegacyExternalStorage="true"
-        android:hardwareAccelerated="true"
-        android:allowBackup="false"
+        android:allowBackup="true"
         android:supportsRtl="true"
-        android:enableOnBackInvokedCallback="true"
-        tools:targetApi="34">
+        android:usesCleartextTraffic="true">
 
-        <!-- ============================================ -->
-        <!-- === النشاط الرئيسي ===                        -->
-        <!-- ============================================ -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleInstance"
+            android:launchMode="singleTop"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true">
+            android:windowSoftInputMode="adjustResize">
 
             <meta-data
-                android:name="io.flutter.embedding.android.NormalTheme"
-                android:resource="@style/NormalTheme" />
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
 
             <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
 
-        <!-- ============================================ -->
-        <!-- === Flutter Embedding v2 ===                 -->
-        <!-- ============================================ -->
+        <!-- عدم حذف هذا الوسم لكي يستطيع فلاتر التعرف على المكونات -->
         <meta-data
             android:name="flutterEmbedding"
-            android:value="3" />
-
-        <!-- === مستقبلات الإشعارات المحلية فقط === -->
-        <receiver
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
-            android:exported="false" />
-
-        <receiver
-            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
-
-        <receiver
-            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
-            android:exported="false" />
-
+            android:value="2" />
     </application>
-
 </manifest>
