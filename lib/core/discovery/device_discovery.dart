@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:multicast_dns/multicast_dns.dart';
@@ -198,18 +199,36 @@ class DeviceDiscovery extends ChangeNotifier {
   Future<void> _loadOrCreateIdentity() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // 1) معرّف الجهاز
-    var id = prefs.getString(AppConstants.keyDeviceId);
-    if (id == null || id.isEmpty) {
-      id = const Uuid().v4();
-      await prefs.setString(AppConstants.keyDeviceId, id);
+    // 1) معرّف الجهاز الثابت برمجياً
+    String id = '';
+    try {
+      final deviceInfo = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        final androidInfo = await deviceInfo.androidInfo;
+        // androidInfo.id يحفظ معرف العتاد الفريد للأنظمة والذي لا يتغير بإعادة التثبيت
+        id = androidInfo.id;
+      } else if (Platform.isIOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        id = iosInfo.identifierForVendor ?? const Uuid().v4();
+      }
+    } catch (e) {
+      debugPrint('[Discovery] Error getting hardware ID: $e');
     }
+
+    if (id.isEmpty) {
+      id = prefs.getString(AppConstants.keyDeviceId) ?? const Uuid().v4();
+    }
+
     _deviceId = id;
+    await prefs.setString(AppConstants.keyDeviceId, _deviceId);
 
     // 2) اسم الجهاز
     var name = prefs.getString(AppConstants.keyDeviceName);
     if (name == null || name.isEmpty) {
-      name = 'LanPhone-${_deviceId.substring(0, 4).toUpperCase()}';
+      final shortId = _deviceId.length >= 4
+          ? _deviceId.substring(0, 4).toUpperCase()
+          : _deviceId.toUpperCase();
+      name = 'LanPhone-$shortId';
       await prefs.setString(AppConstants.keyDeviceName, name);
     }
     _deviceName = name;
@@ -217,7 +236,6 @@ class DeviceDiscovery extends ChangeNotifier {
     // 3) رقم الاتصال
     var number = prefs.getString(AppConstants.keyDeviceNumber);
     if (number == null || number.isEmpty) {
-      // أول تشغيل — نولّد رقمًا جديدًا
       number = await _generateUniqueNumber();
       await prefs.setString(AppConstants.keyDeviceNumber, number);
       debugPrint('[Discovery] Generated number: $number');
