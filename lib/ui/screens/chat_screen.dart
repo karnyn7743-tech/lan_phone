@@ -916,7 +916,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ============================================
-  // === ✅ فحص إصدار Android ===
+  // === فحص إصدار Android ===
   // ============================================
 
   Future<int> _getAndroidSdkInt() async {
@@ -931,60 +931,44 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ============================================
-  // === ✅ الأذونات حسب النوع والإصدار ===
+  // === الأذونات حسب النوع والإصدار ===
   // ============================================
 
-  /// يُرجع الأذونات المطلوبة حسب:
-  ///   - نوع الوسائط (صورة / فيديو / ملف)
-  ///   - إصدار Android
-  ///
-  /// ⚠️ ملاحظة مهمة:
-  ///   - Android 13+ (SDK 33): يستخدم `photos` / `videos`
-  ///   - Android ≤ 12: يستخدم `storage`
-  ///   - الملفات: **لا تحتاج أي إذن** (SAF — Storage Access Framework)
   Future<List<ph.Permission>> _getRequiredPermissions(
     String mediaType,
   ) async {
-    // ✅ الملفات: SAF → لا تحتاج أذونات
     if (mediaType == AppConstants.mediaFile) {
       return [];
     }
 
     final sdkInt = await _getAndroidSdkInt();
 
-    // iOS
     if (!Platform.isAndroid) {
       return [ph.Permission.photos];
     }
 
-    // Android 13+ (SDK 33+)
     if (sdkInt >= 33) {
       if (mediaType == AppConstants.mediaImage) {
         return [ph.Permission.photos];
       } else if (mediaType == AppConstants.mediaVideo) {
-        return [ph.Permission.storage];
+        return [ph.Permission.videos];
       }
       return [];
     }
 
-    // Android ≤ 12
     return [ph.Permission.storage];
   }
 
   // ============================================
-  // === ✅ اختيار وإرسال الوسائط (مُصحَّح) ===
+  // === اختيار وإرسال الوسائط ===
   // ============================================
 
   Future<void> _pickAndSendMedia(String mediaType) async {
     if (_isSendingMedia) return;
 
-    // ============================================
-    // === 1) فحص الأذونات ===
-    // ============================================
     final permissions = await _getRequiredPermissions(mediaType);
 
     if (permissions.isNotEmpty) {
-      // ✅ فحص مسبق: هل الإذن ممنوح أصلًا؟
       bool alreadyGranted = true;
       for (final p in permissions) {
         final status = await p.status;
@@ -1016,17 +1000,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (!mounted) return;
 
-    // ============================================
-    // === 2) الصور: إرسال متعدد ===
-    // ============================================
     if (mediaType == AppConstants.mediaImage) {
       await _pickAndSendMultipleImages();
       return;
     }
 
-    // ============================================
-    // === 3) الفيديو والملف: إرسال فردي ===
-    // ============================================
     String? pickedPath;
 
     try {
@@ -1093,7 +1071,6 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    // إذا اختار صورة واحدة → استخدم الدالة الفردية
     if (paths.length == 1) {
       await _sendSingleImage(paths.first);
       return;
@@ -1211,8 +1188,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return file?.path;
   }
 
-  /// ✅ file_picker يستخدم SAF (Storage Access Framework)
-  ///    → لا يحتاج أي إذن على الإطلاق!
   Future<String?> _pickFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
