@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.lanphone.app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -19,8 +19,8 @@ android {
 
     defaultConfig {
         applicationId = "com.lanphone.app"
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 23
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
