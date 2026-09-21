@@ -235,17 +235,15 @@ class _AppRootState extends State<_AppRoot> {
     }
   }
 
-  // ✅ تعديل: إنشاء كائن افتراضي للجهاز إذا لم يكن موجوداً في Discovery لضمان فتح شاشة المكالمة دائماً
   void _openCallScreen(RtcEvent event) {
     if (_callScreenOpen) return;
 
     final nav = navigatorKey.currentState;
     if (nav == null) return;
 
-    // محاولة جلب الجهاز من قائمة الاكتشاف، أو إنشاء كائن مؤقت لمنع الفشل
     final peer = _discovery?.getDevice(event.peerDeviceId) ??
         DiscoveredDevice(
-          id: event.peerDeviceId,
+          deviceId: event.peerDeviceId,
           name: event.peerName ?? 'مستخدم',
           ip: '',
           port: 0,
