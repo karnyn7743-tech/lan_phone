@@ -21,8 +21,8 @@ android {
         applicationId = "com.lanphone.app"
         minSdk = 23
         targetSdk = 34
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        versionCode = 1
+        versionName = "1.0.0"
         multiDexEnabled = true
     }
 
