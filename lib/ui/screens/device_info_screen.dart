@@ -20,13 +20,13 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
-          crossAxisAlignment: CrossAlignment.start,
+          // ✅ تم التصحيح: CrossAxisAlignment بدلاً من CrossAlignment
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('معلومات الجهاز: ${widget.device ?? "غير معروف"}'),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
-                // تم إزالة معامل device المسبب للخطأ
                 Navigator.push(
                   context,
                   MaterialPageRoute(
