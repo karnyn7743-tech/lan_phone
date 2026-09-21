@@ -767,14 +767,14 @@ class RtcService extends ChangeNotifier {
     };
 
     // ⚡ إصلاح تلقي البث وإلغاء التعليق
-    _pc!.onTrack = (RTCTrackEvent event) {
+    _pc!.onTrack = (RTCTrackEvent event) async {
       debugPrint('[RTC] 🎯 Remote track received: ${event.track.kind}');
       
       if (event.streams.isNotEmpty && event.streams[0] != null) {
         _remoteStream = event.streams[0];
       } else {
         // إنشاء Stream إذا كانت الحزمة مرسلة بدون ألبوم ميديا
-        _remoteStream ??= awaitObjectStream();
+        _remoteStream ??= await awaitObjectStream();
         _remoteStream!.addTrack(event.track);
       }
 
@@ -820,8 +820,8 @@ class RtcService extends ChangeNotifier {
     };
   }
 
-  MediaStream awaitObjectStream() {
-    return _remoteStream ??= createLocalMediaStream('remote_stream');
+  Future<MediaStream> awaitObjectStream() async {
+    return _remoteStream ??= await createLocalMediaStream('remote_stream');
   }
 
   // ============================================
