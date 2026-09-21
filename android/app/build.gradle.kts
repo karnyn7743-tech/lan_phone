@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.lanphone.app"
-    compileSdk = 34
+    compileSdk = 36
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -20,7 +20,7 @@ android {
     defaultConfig {
         applicationId = "com.lanphone.app"
         minSdk = 23
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
         multiDexEnabled = true
