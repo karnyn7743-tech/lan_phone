@@ -54,7 +54,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <!-- ============================================================ -->
-    <!-- متطلبات العتاد (Hardware Features) - ليست إجبارية لكي يعمل على كل الأجهزة -->
+    <!-- متطلبات العتاد (Hardware Features) -->
     <!-- ============================================================ -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
@@ -72,8 +72,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
-            android:taskAffinity=""
+            android:launchMode="singleTask"
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
@@ -89,6 +88,14 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <!-- ============================================================ -->
+        <!-- تصريح خدمات الخلفية لتطبيقات الصوت والمكالمات في فلاتر -->
+        <!-- ============================================================ -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="microphone|camera|connectedDevice|dataSync"
+            android:exported="false" />
 
         <!-- عدم حذف هذا الوسم لكي يستطيع فلاتر التعرف على المكونات -->
         <meta-data
