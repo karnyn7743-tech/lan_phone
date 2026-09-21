@@ -5,6 +5,7 @@ import 'package:flutter_callkit_incoming/entities/android_params.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart';
 import 'package:flutter_callkit_incoming/entities/call_kit_params.dart';
 import 'package:flutter_callkit_incoming/entities/ios_params.dart';
+import 'package:flutter_callkit_incoming/entities/notification_params.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 
 /// ============================================================
@@ -66,9 +67,7 @@ class NotificationService extends ChangeNotifier {
       handle: handle,
       type: isVideo ? 1 : 0, // 0: Audio, 1: Video
       duration: 30000,
-      textAccept: 'قبول',
-      textDecline: 'رفض',
-      missedCallNotification: const NotificationParams(
+      missedCallNotification: NotificationParams(
         showNotification: true,
         isShowCallback: true,
         subtitle: 'مكالمة فائتة',
