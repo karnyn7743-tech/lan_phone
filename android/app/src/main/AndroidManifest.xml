@@ -43,12 +43,15 @@
     <!-- 5. أذونات الخدمات في الخلفية والإشعارات (Foreground Services & Notifications) -->
     <!-- ============================================================ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- أذونات خدمات الخلفية لأندرويد 14+ -->
+    <!-- أذونات خدمات الخلفية لأندرويد 14+ المضافة لضمان استقرار المكالمات -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     
+    <!-- إذن إظهار الشاشة الكاملة للمكالمات أثناء قفل الجهاز -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -90,10 +93,11 @@
         </activity>
 
         <!-- ============================================================ -->
-        <!-- تصريح خدمة الخلفية الآمن لمنع الانهيار عند فتح التطبيق -->
+        <!-- تصريح خدمة الخلفية المعدل لمنع الانهيار على أندرويد 14+ -->
         <!-- ============================================================ -->
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="phoneCall|microphone|camera"
             android:stopWithTask="false"
             android:exported="false" />
 
