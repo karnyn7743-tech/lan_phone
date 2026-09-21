@@ -43,7 +43,7 @@
     <!-- 5. أذونات الخدمات في الخلفية والإشعارات (Foreground Services & Notifications) -->
     <!-- ============================================================ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- أذونات خدمات الخلفية الخاصة بنظام أندرويد 14+ -->
+    <!-- أذونات خدمات الخلفية لأندرويد 14+ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
@@ -90,11 +90,10 @@
         </activity>
 
         <!-- ============================================================ -->
-        <!-- تصريح خدمة الخلفية المعدل لمنع الانهيار (Crash) عند التشغيل -->
+        <!-- تصريح خدمة الخلفية الآمن لمنع الانهيار عند فتح التطبيق -->
         <!-- ============================================================ -->
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
-            android:foregroundServiceType="microphone|connectedDevice|dataSync"
             android:stopWithTask="false"
             android:exported="false" />
 
