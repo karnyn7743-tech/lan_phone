@@ -1,4 +1,4 @@
-Name: Build LanPhone APK
+name: Build LanPhone APK
 
 on:
   push:
