@@ -32,6 +32,7 @@ dependencies:
   # ============================================
   web_socket_channel: ^3.0.1
   multicast_dns: ^0.3.2+9
+  connectivity_plus: ^6.0.3
 
   # ============================================
   # === WebRTC ===
@@ -46,11 +47,12 @@ dependencies:
   path_provider: ^2.1.5
 
   # ============================================
-  # === التشفير ===
+  # === التشفير والتخزين الآمن ===
   # ============================================
   crypto: ^3.0.5
   encrypt: ^5.0.3
   pointycastle: ^3.9.1
+  flutter_secure_storage: ^9.0.0
 
   # ============================================
   # === الأذونات ===
@@ -76,20 +78,23 @@ dependencies:
   open_filex: ^4.5.0
 
   # ============================================
-  # === الإشعارات والمكالمات في الخلفية ===
+  # === الإشعارات وخدمات الخلفية وحظر الخمول ===
   # ============================================
   flutter_local_notifications: ^18.0.0
   flutter_callkit_incoming: ^3.1.5
+  # ⚡ الحزم المضافة لمنع تجميد المكالمات والـ Sockets عند قفل الشاشة أو الخروج للداخل
+  flutter_foreground_task: ^8.0.0
+  wakelock_plus: ^1.2.0
 
   # ============================================
   # === الصوت ===
   # ============================================
   audio_session: ^0.1.22
   flutter_ringtone_player: ^4.0.0+4
+  audioplayers: ^6.0.0
 
-  # ✅ ترقية record إلى الإصدار 6 المباشر
+  # ترقية وحماية حزمة التسجيل
   record: ^5.1.2
-  
   just_audio: ^0.9.42
 
   # ============================================
@@ -112,9 +117,11 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^5.0.0
 
+# ⚡ ضبط وتوافق المنصات المرفقة لحزمة record لمنع التعارض مع الميكروفون والصوت
 dependency_overrides:
+  record_platform_interface: 1.2.0
+  record_android: 1.2.0
   record_linux: ^1.0.0
-  record_platform_interface: ^1.2.0
 
 flutter:
   uses-material-design: true
