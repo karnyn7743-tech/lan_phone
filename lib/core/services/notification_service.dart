@@ -37,7 +37,7 @@ class NotificationService extends ChangeNotifier {
       _eventSubscription = FlutterCallkitIncoming.onEvent.listen(
         (CallEvent? event) {
           if (event == null) return;
-          debugPrint('[NotificationService] 📞 Event Received: ${event.event}');
+          debugPrint('[NotificationService] 📞 Event Received: $event');
           _eventController.add(event);
         },
         onError: (error) {
