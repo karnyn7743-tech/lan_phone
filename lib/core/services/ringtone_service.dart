@@ -68,6 +68,9 @@ class RingtoneService extends ChangeNotifier {
   RingtoneType _type = RingtoneType.ringtone;
   RingtoneType get type => _type;
 
+  // ✅ التعديل هنا: إضافة الـ Getter المطلوب حلّاً لخطأ البناء
+  String get currentRingtoneName => _type.label;
+
   bool _isPlaying = false;
   bool get isPlaying => _isPlaying;
 
