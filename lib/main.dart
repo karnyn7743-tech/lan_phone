@@ -241,12 +241,15 @@ class _AppRootState extends State<_AppRoot> {
     final nav = navigatorKey.currentState;
     if (nav == null) return;
 
-    // تم التعديل لتمرير كافة معلمات DiscoveredDevice المطلوبة
-    final peer = _discovery?.getDevice(event.peerDeviceId) ??
+    // استخراج جهاز المتصل مع دمج بيانات الاسم الصحيحة لمنع بقاء الاسم القديم أو المجهول
+    final discovered = _discovery?.getDevice(event.peerDeviceId);
+    final peer = discovered ??
         DiscoveredDevice(
           deviceId: event.peerDeviceId,
           number: '',
-          name: event.peerName ?? 'مستخدم',
+          name: _rtc?.peerName.isNotEmpty == true
+              ? _rtc!.peerName
+              : (event.peerName.isNotEmpty ? event.peerName : 'جهاز محلي'),
           ip: '',
           port: 0,
           capabilities: const ['voice', 'video'],
@@ -256,9 +259,12 @@ class _AppRootState extends State<_AppRoot> {
 
     _callScreenOpen = true;
 
+    // تمرير حالة هل المستخدم هو البادئ بالمكالمة (isCaller) بدقة
+    final bool isCaller = _rtc?.isCaller ?? false;
+
     final Widget screen = event.callType == AppConstants.callTypeVideo
-        ? VideoCallScreen(peer: peer, isCaller: false)
-        : AudioCallScreen(peer: peer, isCaller: false);
+        ? VideoCallScreen(peer: peer, isCaller: isCaller)
+        : AudioCallScreen(peer: peer, isCaller: isCaller);
 
     nav.push(MaterialPageRoute(builder: (_) => screen)).then((_) {
       _callScreenOpen = false;
