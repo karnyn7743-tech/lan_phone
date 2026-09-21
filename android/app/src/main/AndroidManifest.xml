@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ============================================================ -->
     <!-- 1. أذونات الشبكة والبث المحلي (Network & Multicast) -->
@@ -16,6 +17,8 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
@@ -26,7 +29,7 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- مخصص لأندرويد 13+ لاكتشاف الأجهزة المجاورة عبر الـ Wi-Fi -->
-    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" tools:targetApi="s" />
 
     <!-- ============================================================ -->
     <!-- 4. أذونات التخزين والوسائط والملفات (Storage & Media) -->
@@ -64,6 +67,18 @@
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
     <uses-feature android:name="android.hardware.wifi" android:required="true" />
 
+    <!-- استعلامات الوصول بين التطبيقات لأندرويد 11+ -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
+    </queries>
+
     <application
         android:label="Lan Phone"
         android:name="${applicationName}"
@@ -79,6 +94,8 @@
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:windowSoftInputMode="adjustResize">
 
             <meta-data
@@ -93,13 +110,19 @@
         </activity>
 
         <!-- ============================================================ -->
-        <!-- تصريح خدمة الخلفية المعدل لمنع الانهيار على أندرويد 14+ -->
+        <!-- تصريح خدمة الخلفية لـ Foreground Task -->
         <!-- ============================================================ -->
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:foregroundServiceType="phoneCall|microphone|camera"
             android:stopWithTask="false"
             android:exported="false" />
+
+        <!-- ============================================================ -->
+        <!-- خدمات واستقبال CallKit المصرحة لمنع الانهيار عند الاتصال -->
+        <!-- ============================================================ -->
+        <active android:name="com.hiennguyen.flutter_callkit_incoming.CallkitIncomingBroadcastReceiver"
+            android:exported="true" />
 
         <!-- عدم حذف هذا الوسم لكي يستطيع فلاتر التعرف على المكونات -->
         <meta-data
