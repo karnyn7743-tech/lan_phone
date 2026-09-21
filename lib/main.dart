@@ -196,6 +196,7 @@ class _AppRootState extends State<_AppRoot> {
     _broadcastSub = _broadcastService!.events.listen(_onBroadcastEvent);
   }
 
+  // ✅ تعديل: منع تراكم شاشات المحادثة وتنظيف الملاحة (Pop to root then push)
   void _openChatFromNotification(String peerDeviceId, String? messageId) {
     final nav = navigatorKey.currentState;
     if (nav == null) return;
@@ -203,13 +204,15 @@ class _AppRootState extends State<_AppRoot> {
     final peer = _discovery?.getDevice(peerDeviceId);
     if (peer == null) return;
 
-    nav.push(
+    // يضمن إزالة الشاشات المتكررة والعودة للشاشة الرئيسية قبل فتح المحادثة
+    nav.pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => ChatScreen(
           peer: peer,
           highlightMessageId: messageId,
         ),
       ),
+      (route) => route.isFirst,
     );
   }
 
@@ -271,7 +274,7 @@ class _AppRootState extends State<_AppRoot> {
       return;
     }
 
-    if (_broadcastDialogOpen || _callScreenOpen) {
+    if (_broadcastDialogOpen || _callScreenOpen || _broadcastScreenOpen) {
       _broadcastService?.rejectBroadcast(event.broadcastId, event.peerDeviceId);
       return;
     }
