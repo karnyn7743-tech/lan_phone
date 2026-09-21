@@ -196,7 +196,6 @@ class _AppRootState extends State<_AppRoot> {
     _broadcastSub = _broadcastService!.events.listen(_onBroadcastEvent);
   }
 
-  // ✅ تعديل: منع تراكم شاشات المحادثة وتنظيف الملاحة (Pop to root then push)
   void _openChatFromNotification(String peerDeviceId, String? messageId) {
     final nav = navigatorKey.currentState;
     if (nav == null) return;
@@ -204,7 +203,6 @@ class _AppRootState extends State<_AppRoot> {
     final peer = _discovery?.getDevice(peerDeviceId);
     if (peer == null) return;
 
-    // يضمن إزالة الشاشات المتكررة والعودة للشاشة الرئيسية قبل فتح المحادثة
     nav.pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => ChatScreen(
@@ -224,6 +222,12 @@ class _AppRootState extends State<_AppRoot> {
         _openCallScreen(event);
         break;
       case RtcEventType.callEnded:
+        if (_callScreenOpen) {
+          final nav = navigatorKey.currentState;
+          if (nav != null && nav.canPop()) {
+            nav.pop();
+          }
+        }
         _callScreenOpen = false;
         break;
       default:
@@ -231,14 +235,21 @@ class _AppRootState extends State<_AppRoot> {
     }
   }
 
+  // ✅ تعديل: إنشاء كائن افتراضي للجهاز إذا لم يكن موجوداً في Discovery لضمان فتح شاشة المكالمة دائماً
   void _openCallScreen(RtcEvent event) {
     if (_callScreenOpen) return;
 
     final nav = navigatorKey.currentState;
     if (nav == null) return;
 
-    final peer = _discovery?.getDevice(event.peerDeviceId);
-    if (peer == null) return;
+    // محاولة جلب الجهاز من قائمة الاكتشاف، أو إنشاء كائن مؤقت لمنع الفشل
+    final peer = _discovery?.getDevice(event.peerDeviceId) ??
+        DiscoveredDevice(
+          id: event.peerDeviceId,
+          name: event.peerName ?? 'مستخدم',
+          ip: '',
+          port: 0,
+        );
 
     _callScreenOpen = true;
 
