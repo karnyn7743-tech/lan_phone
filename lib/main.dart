@@ -241,12 +241,17 @@ class _AppRootState extends State<_AppRoot> {
     final nav = navigatorKey.currentState;
     if (nav == null) return;
 
+    // تم التعديل لتمرير كافة معلمات DiscoveredDevice المطلوبة
     final peer = _discovery?.getDevice(event.peerDeviceId) ??
         DiscoveredDevice(
           deviceId: event.peerDeviceId,
+          number: '',
           name: event.peerName ?? 'مستخدم',
           ip: '',
           port: 0,
+          capabilities: const ['voice', 'video'],
+          lastSeen: DateTime.now(),
+          isOnline: true,
         );
 
     _callScreenOpen = true;
