@@ -11,7 +11,7 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
     <!-- ============================================================ -->
-    <!-- 2. أذونات الصوت والمكالمات الكاميرا (Audio, Video & WebRTC) -->
+    <!-- 2. أذونات الصوت والمكالمات والكاميرا (Audio, Video & WebRTC) -->
     <!-- ============================================================ -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -43,7 +43,7 @@
     <!-- 5. أذونات الخدمات في الخلفية والإشعارات (Foreground Services & Notifications) -->
     <!-- ============================================================ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- تفصيل أنواع خدمات الخلفية لأندرويد 10 و 14+ منعاً للانهيار Crash -->
+    <!-- أذونات خدمات الخلفية الخاصة بنظام أندرويد 14+ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
@@ -90,11 +90,12 @@
         </activity>
 
         <!-- ============================================================ -->
-        <!-- تصريح خدمات الخلفية لتطبيقات الصوت والمكالمات في فلاتر -->
+        <!-- تصريح خدمة الخلفية المعدل لمنع الانهيار (Crash) عند التشغيل -->
         <!-- ============================================================ -->
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
-            android:foregroundServiceType="microphone|camera|connectedDevice|dataSync"
+            android:foregroundServiceType="microphone|connectedDevice|dataSync"
+            android:stopWithTask="false"
             android:exported="false" />
 
         <!-- عدم حذف هذا الوسم لكي يستطيع فلاتر التعرف على المكونات -->
