@@ -12,7 +12,7 @@ import '../services/notification_service.dart';
 import '../signaling/signaling_service.dart';
 
 /// ============================================================
-/// محرك WebRTC مع تسجيل المكالمات ودعم Callkit
+/// محرك WebRTC معدل ومصلح للتواصل المباشر مع دعم Callkit
 /// ============================================================
 class RtcService extends ChangeNotifier {
   RtcService();
@@ -67,11 +67,9 @@ class RtcService extends ChangeNotifier {
 
   DateTime? _callLogStartTime;
 
-  // تخزين SDP offer الوارد (للمستقبِل)
   String? _pendingOfferSdp;
   String? _pendingOfferType;
 
-  // IP المحلي (يُستخدم لاستبدال mDNS في SDP)
   String _localIp = '';
 
   int get callDurationSeconds {
@@ -111,14 +109,16 @@ class RtcService extends ChangeNotifier {
   bool _remoteDescriptionSet = false;
 
   // ============================================
-  // === إعدادات ICE ===
+  // === إعدادات ICE (محسنة لشبكات LAN) ===
   // ============================================
   final Map<String, dynamic> _iceServers = const {
-    'iceServers': <Map<String, dynamic>>[],
+    'iceServers': <Map<String, dynamic>>[
+      {'urls': 'stun:stun.l.google.com:19302'},
+    ],
     'sdpSemantics': 'unified-plan',
   };
 
-  // قيود صوت بمعايير WebRTC الحديثة
+  // قيود الصوت المحسنة مانعة الصدى كما في wifi_p2p_app
   static const Map<String, dynamic> _audioConstraints = {
     'audio': {
       'echoCancellation': true,
@@ -130,7 +130,6 @@ class RtcService extends ChangeNotifier {
     },
   };
 
-  // قيود فيديو بالصيغة الحديثة
   static const Map<String, dynamic> _videoConstraints = {
     'video': {
       'facingMode': 'user',
@@ -150,7 +149,6 @@ class RtcService extends ChangeNotifier {
   // ============================================
   // === استخراج IP المحلي ===
   // ============================================
-
   Future<String> _detectLocalIp() async {
     if (_localIp.isNotEmpty) return _localIp;
 
@@ -164,7 +162,8 @@ class RtcService extends ChangeNotifier {
         final name = iface.name.toLowerCase();
         if (name.contains('wlan') ||
             name.contains('wifi') ||
-            name.contains('en0')) {
+            name.contains('en0') ||
+            name.contains('ap')) {
           for (final addr in iface.addresses) {
             final ip = addr.address;
             if (_isPrivateIp(ip)) {
@@ -205,64 +204,40 @@ class RtcService extends ChangeNotifier {
     return false;
   }
 
-  // ============================================
-  // === إصلاح SDP — استبدال mDNS بـ IP ===
-  // ============================================
-
+  // إصلاح أمن لـ SDP دون الإضرار بهيكلية البث الصوتية والمرئية
   String _fixSdp(String sdp) {
-    if (_localIp.isEmpty) {
-      debugPrint('[RTC] ⚠️ _fixSdp: no local IP available');
-      return sdp;
-    }
+    if (_localIp.isEmpty) return sdp;
 
     final fixed = sdp.replaceAllMapped(
       RegExp(
         r'([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32,})\.local',
       ),
-      (m) {
-        debugPrint('[RTC] 🔄 Replacing mDNS: ${m.group(0)} → $_localIp');
-        return _localIp;
-      },
+      (m) => _localIp,
     );
-
-    if (fixed != sdp) {
-      debugPrint('[RTC] ✅ SDP fixed: mDNS → $_localIp');
-    } else {
-      debugPrint('[RTC] ℹ️ SDP unchanged (no mDNS found)');
-    }
-
     return fixed;
   }
 
   // ============================================
   // === بدء مكالمة صادرة ===
   // ============================================
-
   Future<bool> startCall({
     required String peerDeviceId,
     required String peerName,
     required String callType,
   }) async {
-    if (isInCall) {
-      debugPrint('[RTC] Already in call');
-      return false;
-    }
-
-    if (_signaling == null) {
-      debugPrint('[RTC] Signaling not attached');
-      return false;
-    }
+    if (isInCall) return false;
+    if (_signaling == null) return false;
 
     try {
       final blocked =
           await DatabaseHelper.instance.isDeviceBlocked(peerDeviceId);
-      if (blocked) {
-        debugPrint('[RTC] Cannot call blocked device');
-        return false;
-      }
+      if (blocked) return false;
     } catch (e) {
       debugPrint('[RTC] block check error: $e');
     }
+
+    // ⚡ تصفير الحالة السابقة لضمان عدم بقاء اسم/بيانات الجهاز السابق
+    _resetState();
 
     _currentCallId = _generateCallId();
     _peerDeviceId = peerDeviceId;
@@ -278,6 +253,8 @@ class RtcService extends ChangeNotifier {
 
     try {
       await _detectLocalIp();
+      
+      // ⚡ فتح الميديا وإضافتها للـ PeerConnection أولاً بحسب أسلوب wifi_p2p_app
       await _openLocalMedia(callType);
       await _createPeerConnection();
       await _activateAudioSessionForWebRTC();
@@ -300,7 +277,7 @@ class RtcService extends ChangeNotifier {
         'sdpType': offer.type,
       });
 
-      debugPrint('[RTC] ✅ Call invite sent with FIXED SDP to $peerDeviceId');
+      debugPrint('[RTC] ✅ Call invite sent with tracks');
       return true;
     } catch (e) {
       debugPrint('[RTC] startCall error: $e');
@@ -315,7 +292,6 @@ class RtcService extends ChangeNotifier {
   // ============================================
   // === استقبال مكالمة ===
   // ============================================
-
   Future<void> _handleIncomingCall(SignalingMessage msg) async {
     if (isInCall) {
       await _signaling?.sendTo(msg.from, {
@@ -329,7 +305,6 @@ class RtcService extends ChangeNotifier {
       final blocked =
           await DatabaseHelper.instance.isDeviceBlocked(msg.from);
       if (blocked) {
-        debugPrint('[RTC] Rejected call from blocked: ${msg.from}');
         await _signaling?.sendTo(msg.from, {
           'type': AppConstants.msgCallBusy,
           'callId': msg.payload['callId'],
@@ -340,9 +315,12 @@ class RtcService extends ChangeNotifier {
       debugPrint('[RTC] block check error: $e');
     }
 
+    // ⚡ تصفير الحالة السابقة لمسح تفاصيل الجهاز القديم
+    _resetState();
+
     _currentCallId = msg.payload['callId'] as String;
     _peerDeviceId = msg.from;
-    _peerName = msg.payload['peerName'] as String? ?? 'جهاز';
+    _peerName = msg.payload['peerName'] as String? ?? 'جهاز محلي';
     _callType =
         msg.payload['media'] as String? ?? AppConstants.callTypeAudio;
     _isCaller = false;
@@ -352,11 +330,6 @@ class RtcService extends ChangeNotifier {
 
     _pendingOfferSdp = msg.payload['sdp'] as String?;
     _pendingOfferType = msg.payload['sdpType'] as String? ?? 'offer';
-
-    debugPrint(
-      '[RTC] 📥 Incoming call — SDP: '
-      '${_pendingOfferSdp != null ? "YES (${_pendingOfferSdp!.length} chars)" : "NO"}',
-    );
 
     notifyListeners();
 
@@ -373,9 +346,8 @@ class RtcService extends ChangeNotifier {
   }
 
   // ============================================
-  // === Callkit UI ===
+  // === Callkit UI & Events ===
   // ============================================
-
   Future<void> _showCallkitIncoming() async {
     try {
       final params = CallKitParams(
@@ -435,10 +407,6 @@ class RtcService extends ChangeNotifier {
     }
   }
 
-  // ============================================
-  // === أحداث Callkit ===
-  // ============================================
-
   Future<void> _onCallkitEvent(CallEvent? event) async {
     if (event == null) return;
 
@@ -461,7 +429,7 @@ class RtcService extends ChangeNotifier {
   Future<void> _onCallkitAccept(CallEvent event) async {
     if (_callState != AppConstants.callStateRinging) return;
 
-    // أولاً: فتح واجهة الشاشة
+    // ⚡ أولاً: إطلاق حدث فتح الواجهة فوراً لضمان إظهار الشاشة بدون إبطاء[span_0](start_span)[span_0](end_span)
     _eventController.add(RtcEvent(
       type: RtcEventType.callAccepted,
       callId: _currentCallId,
@@ -470,7 +438,7 @@ class RtcService extends ChangeNotifier {
       callType: _callType,
     ));
 
-    // ثانياً: بدء الاتصال وإتمام الـ Handshake
+    // ثانياً: معالجة الـ Handshake والوسائط في الخلفية
     await acceptCall();
   }
 
@@ -493,9 +461,8 @@ class RtcService extends ChangeNotifier {
   }
 
   // ============================================
-  // === قبول المكالمة (مع SDP) ===
+  // === قبول المكالمة (مع تجهيز الصوت والفيديو) ===
   // ============================================
-
   Future<bool> acceptCall() async {
     if (_callState != AppConstants.callStateRinging &&
         _callState != AppConstants.callStateConnecting) {
@@ -512,6 +479,8 @@ class RtcService extends ChangeNotifier {
       notifyListeners();
 
       await _detectLocalIp();
+      
+      // ⚡ تجهيز الميديا والـ Tracks قبل الإجابة بالـ Answer[span_1](start_span)[span_1](end_span)[span_2](start_span)[span_2](end_span)
       await _openLocalMedia(_callType);
       await _createPeerConnection();
       await _activateAudioSessionForWebRTC();
@@ -521,8 +490,6 @@ class RtcService extends ChangeNotifier {
         RTCSessionDescription(_pendingOfferSdp!, _pendingOfferType!),
       );
       _remoteDescriptionSet = true;
-      debugPrint('[RTC] ✅ Remote description set from offer');
-
       await _drainPendingCandidates();
 
       final answer = await _pc!.createAnswer({
@@ -540,7 +507,7 @@ class RtcService extends ChangeNotifier {
         'sdpType': answer.type,
       });
 
-      debugPrint('[RTC] ✅ Call accepted with FIXED SDP answer sent');
+      debugPrint('[RTC] ✅ Call accepted & tracks configured');
       return true;
     } catch (e) {
       debugPrint('[RTC] acceptCall error: $e');
@@ -570,7 +537,6 @@ class RtcService extends ChangeNotifier {
   // ============================================
   // === معالجة Signaling ===
   // ============================================
-
   Future<void> _onSignalingMessage(SignalingMessage msg) async {
     switch (msg.type) {
       case AppConstants.msgCallInvite:
@@ -617,13 +583,10 @@ class RtcService extends ChangeNotifier {
           RTCSessionDescription(sdp, sdpType),
         );
         _remoteDescriptionSet = true;
-        debugPrint('[RTC] ✅ Remote description set from answer');
         await _drainPendingCandidates();
       } catch (e) {
         debugPrint('[RTC] setRemoteDescription(answer) error: $e');
       }
-    } else {
-      debugPrint('[RTC] ⚠️ Accept received without SDP');
     }
   }
 
@@ -693,7 +656,6 @@ class RtcService extends ChangeNotifier {
   // ============================================
   // === SDP / ICE ===
   // ============================================
-
   Future<void> _handleSdpOffer(SignalingMessage msg) async {
     final callId = msg.payload['callId'] as String?;
     if (callId != _currentCallId || _pc == null) return;
@@ -752,13 +714,11 @@ class RtcService extends ChangeNotifier {
 
     if (_pc == null || !_remoteDescriptionSet) {
       _pendingCandidates.add(candidate);
-      debugPrint('[RTC] ICE queued (no remote desc yet)');
       return;
     }
 
     try {
       await _pc!.addCandidate(candidate);
-      debugPrint('[RTC] ICE added');
     } catch (e) {
       debugPrint('[RTC] addCandidate error: $e');
     }
@@ -766,7 +726,6 @@ class RtcService extends ChangeNotifier {
 
   Future<void> _drainPendingCandidates() async {
     if (_pc == null) return;
-    debugPrint('[RTC] Draining ${_pendingCandidates.length} ICE candidates');
     for (final c in _pendingCandidates) {
       try {
         await _pc!.addCandidate(c);
@@ -778,7 +737,6 @@ class RtcService extends ChangeNotifier {
   // ============================================
   // === RTCPeerConnection ===
   // ============================================
-
   Future<void> _createPeerConnection() async {
     _pc = await createPeerConnection(_iceServers);
 
@@ -852,10 +810,8 @@ class RtcService extends ChangeNotifier {
   // ============================================
   // === الوسائط ===
   // ============================================
-
   Future<void> _openLocalMedia(String callType) async {
     final constraints = <String, dynamic>{};
-
     constraints.addAll(_audioConstraints);
 
     if (callType == AppConstants.callTypeVideo) {
@@ -865,11 +821,6 @@ class RtcService extends ChangeNotifier {
     }
 
     _localStream = await navigator.mediaDevices.getUserMedia(constraints);
-    debugPrint(
-      '[RTC] Local stream: ${_localStream!.getTracks().length} tracks '
-      '(audio: ${_localStream!.getAudioTracks().length}, '
-      'video: ${_localStream!.getVideoTracks().length})',
-    );
 
     if (callType != AppConstants.callTypeVideo) {
       _isVideoEnabled = false;
@@ -880,14 +831,13 @@ class RtcService extends ChangeNotifier {
     if (_localStream == null || _pc == null) return;
     for (final track in _localStream!.getTracks()) {
       await _pc!.addTrack(track, _localStream!);
-      debugPrint('[RTC] Added track: ${track.kind}');
     }
   }
 
   Future<void> _activateAudioSessionForWebRTC() async {
     try {
+      // ⚡ تفعيل الوضع الصوتي المحسن لتفعيل شريحة إلغاء الصدى بالنظام
       await Helper.setSpeakerphoneOn(_callType == AppConstants.callTypeVideo);
-      debugPrint('[RTC] 🔊 Audio session handed to WebRTC');
     } catch (e) {
       debugPrint('[RTC] activateAudioSession error: $e');
     }
@@ -896,7 +846,6 @@ class RtcService extends ChangeNotifier {
   // ============================================
   // === التحكم ===
   // ============================================
-
   void toggleMute() {
     if (_localStream == null) return;
     for (final track in _localStream!.getAudioTracks()) {
@@ -950,9 +899,8 @@ class RtcService extends ChangeNotifier {
   }
 
   // ============================================
-  // === إنهاء المكالمة ===
+  // === إنهاء المكالمة وتنزيل الموارد ===
   // ============================================
-
   Future<void> endCall({String reason = 'user-hangup'}) async {
     if (!isInCall) return;
 
@@ -995,7 +943,6 @@ class RtcService extends ChangeNotifier {
   // ============================================
   // === تسجيل المكالمات ===
   // ============================================
-
   Future<void> _logCallStart({required String direction}) async {
     try {
       await DatabaseHelper.instance.insertCallLog({
@@ -1047,9 +994,8 @@ class RtcService extends ChangeNotifier {
   }
 
   // ============================================
-  // === تنظيف ===
+  // === تنظيف وإعادة ضبط الشاشة والحالة ===
   // ============================================
-
   Future<void> _cleanup() async {
     if (_localStream != null) {
       for (final track in _localStream!.getTracks()) {
@@ -1084,6 +1030,7 @@ class RtcService extends ChangeNotifier {
     _isSpeakerOn = false;
   }
 
+  // ⚡ إعادة التعيين الكاملة تضمن عدم الاحتفاظ باسم أو رقم الجهاز السابق
   void _resetState() {
     _currentCallId = '';
     _peerDeviceId = '';
@@ -1127,9 +1074,8 @@ class RtcService extends ChangeNotifier {
 }
 
 // ============================================================
-// === نماذج ===
+// === نماذج الأحداث ===
 // ============================================================
-
 enum RtcEventType {
   incomingCall,
   callAccepted,
