@@ -1,12 +1,18 @@
+import 'dart:async';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants.dart';
+import '../../core/discovery/discovered_device.dart';
 import '../../core/discovery/device_discovery.dart';
+import '../../core/rtc/rtc_service.dart';
 import '../../core/services/broadcast_service.dart';
 import '../../core/services/permission_service.dart';
 import '../theme/app_theme.dart';
+import 'audio_call_screen.dart';
 import 'broadcast_screen.dart';
 import 'dialer_screen.dart';
 import 'global_search_screen.dart';
@@ -16,6 +22,7 @@ import 'settings_screen.dart';
 import 'tabs/calls_tab.dart';
 import 'tabs/conversations_tab.dart';
 import 'tabs/devices_tab.dart';
+import 'video_call_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -28,6 +35,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   late TabController _tabController;
   bool _permissionsChecked = false;
   DateTime? _lastBackPressTime;
+  StreamSubscription<RtcEvent>? _rtcSubscription;
 
   @override
   void initState() {
@@ -36,11 +44,57 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _ensureDiscoveryPermissions();
+      _listenToRtcEvents();
     });
+  }
+
+  /// الاستماع لأحداث RTC للتنقل التلقائي لشاشة المكالمات عند القبول أو الاستلام
+  void _listenToRtcEvents() {
+    final rtc = context.read<RtcService>();
+    _rtcSubscription?.cancel();
+    _rtcSubscription = rtc.events.listen((event) {
+      if (!mounted) return;
+
+      // عند استلام حدث قبول المكالمة أو مكالمة واردة، ننتقل فوراً للشاشة
+      if (event.type == RtcEventType.callAccepted || event.type == RtcEventType.incomingCall) {
+        _navigateToCallScreen(event);
+      }
+    });
+  }
+
+  void _navigateToCallScreen(RtcEvent event) {
+    final peer = DiscoveredDevice(
+      deviceId: event.peerDeviceId,
+      name: event.peerName,
+      ip: '',
+      port: 0,
+      lastSeen: DateTime.now(),
+    );
+
+    if (event.callType == AppConstants.callTypeVideo) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => VideoCallScreen(
+            peer: peer,
+            isCaller: false,
+          ),
+        ),
+      );
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AudioCallScreen(
+            peer: peer,
+            isCaller: false,
+          ),
+        ),
+      );
+    }
   }
 
   @override
   void dispose() {
+    _rtcSubscription?.cancel();
     _tabController.dispose();
     super.dispose();
   }
