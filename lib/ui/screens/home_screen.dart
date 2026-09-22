@@ -63,9 +63,24 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _navigateToCallScreen(RtcEvent event) {
+    // البحث عن الجهاز المكتشف باستخدام المعرف الفريد للحصول على رقمه المسجل
+    final discovery = context.read<DeviceDiscovery>();
+    final matchedDevice = discovery.onlineDevices.firstWhere(
+      (d) => d.deviceId == event.peerDeviceId,
+      orElse: () => DiscoveredDevice(
+        deviceId: event.peerDeviceId,
+        name: event.peerName,
+        number: event.peerDeviceId,
+        ip: '',
+        port: 0,
+        lastSeen: DateTime.now(),
+      ),
+    );
+
     final peer = DiscoveredDevice(
       deviceId: event.peerDeviceId,
       name: event.peerName,
+      number: matchedDevice.number,
       ip: '',
       port: 0,
       lastSeen: DateTime.now(),
