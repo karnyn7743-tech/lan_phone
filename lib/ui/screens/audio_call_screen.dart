@@ -9,9 +9,6 @@ import '../../core/discovery/discovered_device.dart';
 import '../../core/rtc/rtc_service.dart';
 import '../theme/app_theme.dart';
 
-/// ============================================================
-/// شاشة المكالمة الصوتية (مُصلحة ومحمية بالكامل)
-/// ============================================================
 class AudioCallScreen extends StatefulWidget {
   final DiscoveredDevice peer;
   final bool isCaller;
@@ -42,11 +39,10 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
       if (!mounted) return;
       _rtc = context.read<RtcService>();
 
-      // الاستماع لأحداث RTC وتغيرات الحالة
       _rtcEventSub = _rtc!.events.listen(_onRtcEvent);
       _rtc!.addListener(_onRtcChanged);
 
-      // إذا كنا المتصلين، ابدأ المكالمة
+      // ✅ المتصل فقط يبدأ المكالمة
       if (widget.isCaller) {
         final ok = await _rtc!.startCall(
           peerDeviceId: widget.peer.deviceId,
@@ -59,8 +55,9 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
           return;
         }
       }
+      // ✅ المستقبِل: لا يفعل شيئًا — الشاشة تُفتح أصلًا عند ringing
+      //    وينتظر قبول المستخدم (من الشاشة أو من CallKit)
 
-      // مؤقت حساب المدة
       _durationTimer = Timer.periodic(
         const Duration(seconds: 1),
         (_) => _tickDuration(),
@@ -77,9 +74,7 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
   }
 
   void _onRtcChanged() {
-    if (mounted) {
-      setState(() {});
-    }
+    if (mounted) setState(() {});
   }
 
   void _tickDuration() {
@@ -99,13 +94,9 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
       case RtcEventType.callEnded:
         _handleCloseScreen();
         break;
-
       case RtcEventType.error:
-        if (mounted) {
-          _showErrorAndClose('حدث خطأ أثناء المكالمة');
-        }
+        if (mounted) _showErrorAndClose('حدث خطأ أثناء المكالمة');
         break;
-
       default:
         break;
     }
@@ -115,6 +106,30 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
     if (_isEndingCall || !mounted) return;
     _isEndingCall = true;
     Navigator.of(context).pop();
+  }
+
+  // ✅ قبول المكالمة (للمستقبِل)
+  Future<void> _acceptCall() async {
+    if (_rtc == null) return;
+    try {
+      await _rtc!.acceptCall();
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('[AudioCallScreen] acceptCall error: $e');
+      if (mounted) _showErrorAndClose('تعذّر قبول المكالمة');
+    }
+  }
+
+  // ✅ رفض المكالمة (للمستقبِل)
+  Future<void> _rejectCall() async {
+    if (_isEndingCall) return;
+    _isEndingCall = true;
+    try {
+      await _rtc?.rejectCall();
+    } catch (e) {
+      debugPrint('[AudioCallScreen] rejectCall error: $e');
+    }
+    if (mounted) Navigator.of(context).pop();
   }
 
   Future<void> _endCall() async {
@@ -145,7 +160,7 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
       case AppConstants.callStateCalling:
         return 'جارٍ الاتصال...';
       case AppConstants.callStateRinging:
-        return 'يرن...';
+        return widget.isCaller ? 'يرن...' : 'مكالمة واردة';
       case AppConstants.callStateConnecting:
         return 'جارٍ التوصيل...';
       case AppConstants.callStateConnected:
@@ -169,12 +184,18 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
   @override
   Widget build(BuildContext context) {
     final rtc = context.watch<RtcService>();
+    final isRingingIncoming = !widget.isCaller &&
+        rtc.callState == AppConstants.callStateRinging;
 
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        await _endCall();
+        if (isRingingIncoming) {
+          await _rejectCall();
+        } else {
+          await _endCall();
+        }
       },
       child: Scaffold(
         backgroundColor: const Color(0xFF0A1A1F),
@@ -184,15 +205,11 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xFF0F2A2E),
-                  Color(0xFF0A1A1F),
-                ],
+                colors: [Color(0xFF0F2A2E), Color(0xFF0A1A1F)],
               ),
             ),
             child: Column(
               children: [
-                // معلومات الطرف الآخر
                 Expanded(
                   flex: 5,
                   child: Column(
@@ -239,9 +256,7 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
                           fontSize: 16,
                           color: Colors.white.withOpacity(0.75),
                           letterSpacing: 0.5,
-                          fontFeatures: const [
-                            FontFeature.tabularFigures(),
-                          ],
+                          fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -252,8 +267,6 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
                     ],
                   ),
                 ),
-
-                // أزرار التحكم
                 Expanded(
                   flex: 4,
                   child: Container(
@@ -261,29 +274,50 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            _ControlButton(
-                              icon: rtc.isMuted
-                                  ? Icons.mic_off
-                                  : Icons.mic,
-                              label: rtc.isMuted ? 'إلغاء الكتم' : 'كتم',
-                              active: rtc.isMuted,
-                              onTap: () => rtc.toggleMute(),
-                            ),
-                            _ControlButton(
-                              icon: rtc.isSpeakerOn
-                                  ? Icons.volume_up
-                                  : Icons.volume_off,
-                              label: rtc.isSpeakerOn ? 'المكبر مفعل' : 'مكبر الصوت',
-                              active: rtc.isSpeakerOn,
-                              onTap: () => rtc.toggleSpeaker(),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 40),
-                        _HangupButton(onTap: _endCall),
+                        // ✅ للمستقبِل: أزرار القبول والرفض
+                        if (isRingingIncoming)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _CallActionButton(
+                                icon: Icons.call_end,
+                                label: 'رفض',
+                                color: AppTheme.errorColor,
+                                onTap: _rejectCall,
+                              ),
+                              _CallActionButton(
+                                icon: Icons.call,
+                                label: 'قبول',
+                                color: AppTheme.successColor,
+                                onTap: _acceptCall,
+                              ),
+                            ],
+                          )
+                        else ...[
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _ControlButton(
+                                icon: rtc.isMuted ? Icons.mic_off : Icons.mic,
+                                label: rtc.isMuted ? 'إلغاء الكتم' : 'كتم',
+                                active: rtc.isMuted,
+                                onTap: () => rtc.toggleMute(),
+                              ),
+                              _ControlButton(
+                                icon: rtc.isSpeakerOn
+                                    ? Icons.volume_up
+                                    : Icons.volume_off,
+                                label: rtc.isSpeakerOn
+                                    ? 'المكبر مفعل'
+                                    : 'مكبر الصوت',
+                                active: rtc.isSpeakerOn,
+                                onTap: () => rtc.toggleSpeaker(),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 40),
+                          _HangupButton(onTap: _endCall),
+                        ],
                       ],
                     ),
                   ),
@@ -293,6 +327,51 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ✅ زر قبول/رفض (للمستقبِل)
+class _CallActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _CallActionButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Material(
+          color: color,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Icon(icon, size: 32, color: Colors.white),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: Colors.white.withOpacity(0.9),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -316,9 +395,7 @@ class _ControlButton extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Material(
-          color: active
-              ? Colors.white
-              : Colors.white.withOpacity(0.15),
+          color: active ? Colors.white : Colors.white.withOpacity(0.15),
           shape: const CircleBorder(),
           child: InkWell(
             customBorder: const CircleBorder(),
@@ -328,9 +405,7 @@ class _ControlButton extends StatelessWidget {
               child: Icon(
                 icon,
                 size: 28,
-                color: active
-                    ? const Color(0xFF0A1A1F)
-                    : Colors.white,
+                color: active ? const Color(0xFF0A1A1F) : Colors.white,
               ),
             ),
           ),
@@ -363,11 +438,7 @@ class _HangupButton extends StatelessWidget {
         onTap: onTap,
         child: const Padding(
           padding: EdgeInsets.all(20),
-          child: Icon(
-            Icons.call_end,
-            size: 34,
-            color: Colors.white,
-          ),
+          child: Icon(Icons.call_end, size: 34, color: Colors.white),
         ),
       ),
     );
@@ -409,7 +480,8 @@ class _PulsingDotState extends State<_PulsingDot>
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(3, (i) {
             final offset = (i * 0.2);
-            final opacity = ((_controller.value - offset) % 1.0).clamp(0.3, 1.0);
+            final opacity = ((_controller.value - offset) % 1.0)
+                .clamp(0.3, 1.0);
             return Container(
               margin: const EdgeInsets.symmetric(horizontal: 3),
               width: 8,
