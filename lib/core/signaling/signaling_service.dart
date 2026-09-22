@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../data/database/database_helper.dart';
 import '../constants.dart';
@@ -21,6 +21,7 @@ class SignalingService extends ChangeNotifier {
 
   void attachDiscovery(DeviceDiscovery discovery) {
     if (_discovery == discovery) return;
+    _discovery?.removeListener(_onDiscoveryChanged);
     _discovery = discovery;
     _discovery!.addListener(_onDiscoveryChanged);
   }
@@ -175,14 +176,14 @@ class SignalingService extends ChangeNotifier {
       final text = data is String ? data : utf8.decode(data as List<int>);
       final json = jsonDecode(text) as Map<String, dynamic>;
 
-      final pendingId = _pendingIncoming[channel];
-      if (pendingId != null) {
+      if (_pendingIncoming.containsKey(channel)) {
         final deviceId = json['deviceId'] as String? ??
             json['from'] as String? ??
             '';
         if (deviceId.isEmpty) {
           debugPrint('[Signaling] First message without deviceId — closing');
           channel.sink.close();
+          _pendingIncoming.remove(channel);
           return;
         }
 
