@@ -10,7 +10,7 @@ import '../../core/rtc/rtc_service.dart';
 import '../theme/app_theme.dart';
 
 /// ============================================================
-/// شاشة المكالمة الصوتية (مُصلحة ومحمية)
+/// شاشة المكالمة الصوتية (مُصلحة ومحمية بالكامل)
 /// ============================================================
 class AudioCallScreen extends StatefulWidget {
   final DiscoveredDevice peer;
@@ -39,6 +39,7 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
       _rtc = context.read<RtcService>();
 
       // الاستماع لأحداث RTC وتغيرات الحالة
@@ -171,7 +172,7 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) async {
+      onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         await _endCall();
       },
