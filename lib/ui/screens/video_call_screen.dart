@@ -10,9 +10,6 @@ import '../../core/discovery/discovered_device.dart';
 import '../../core/rtc/rtc_service.dart';
 import '../theme/app_theme.dart';
 
-/// ============================================================
-/// شاشة مكالمة الفيديو (مُصلحة ومحسنة)
-/// ============================================================
 class VideoCallScreen extends StatefulWidget {
   final DiscoveredDevice peer;
   final bool isCaller;
@@ -37,52 +34,43 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   Duration _elapsed = Duration.zero;
   bool _isEndingCall = false;
-
-  // موضع النافذة المصغرة (PIP)
   Offset _pipPosition = const Offset(20, 80);
 
   @override
   void initState() {
     super.initState();
+    _initCallFlow();
+  }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // 1. تهيئة العارضين
-      await _localRenderer.initialize();
-      await _remoteRenderer.initialize();
+  Future<void> _initCallFlow() async {
+    await _localRenderer.initialize();
+    await _remoteRenderer.initialize();
 
-      if (!mounted) return;
+    if (!mounted) return;
 
-      _rtc = context.read<RtcService>();
+    _rtc = context.read<RtcService>();
+    _rtcEventSub = _rtc!.events.listen(_onRtcEvent);
+    _rtc!.addListener(_onRtcChanged);
 
-      // 2. ربط الـ streams
-      _bindStreams();
-
-      // 3. الاستماع لأحداث RTC
-      _rtcEventSub = _rtc!.events.listen(_onRtcEvent);
-      _rtc!.addListener(_onRtcChanged);
-
-      // 4. إذا كنا المتصلين، ابدأ المكالمة
-      if (widget.isCaller) {
-        final ok = await _rtc!.startCall(
-          peerDeviceId: widget.peer.deviceId,
-          peerName: widget.peer.name,
-          callType: AppConstants.callTypeVideo,
-        );
-
-        if (!ok && mounted) {
-          _showErrorAndClose('تعذّر بدء مكالمة الفيديو');
-          return;
-        }
-
-        _bindStreams();
-      }
-
-      // 5. مؤقت المدة
-      _durationTimer = Timer.periodic(
-        const Duration(seconds: 1),
-        (_) => _tickDuration(),
+    if (widget.isCaller) {
+      final ok = await _rtc!.startCall(
+        peerDeviceId: widget.peer.deviceId,
+        peerName: widget.peer.name,
+        callType: AppConstants.callTypeVideo,
       );
-    });
+
+      if (!ok && mounted) {
+        _showErrorAndClose('تعذّر بدء مكالمة الفيديو');
+        return;
+      }
+    }
+
+    _bindStreams();
+
+    _durationTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _tickDuration(),
+    );
   }
 
   @override
@@ -91,7 +79,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     _rtc?.removeListener(_onRtcChanged);
     _durationTimer?.cancel();
     
-    // تنظيف الموارد بنظافة لمنع تسريب الذاكرة
     _localRenderer.srcObject = null;
     _remoteRenderer.srcObject = null;
     _localRenderer.dispose();
@@ -102,17 +89,15 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
   void _bindStreams() {
     final rtc = _rtc;
-    if (rtc == null) return;
+    if (rtc == null || !mounted) return;
 
-    if (rtc.localStream != null &&
-        _localRenderer.srcObject != rtc.localStream) {
+    if (rtc.localStream != null && _localRenderer.srcObject != rtc.localStream) {
       setState(() {
         _localRenderer.srcObject = rtc.localStream;
       });
     }
 
-    if (rtc.remoteStream != null &&
-        _remoteRenderer.srcObject != rtc.remoteStream) {
+    if (rtc.remoteStream != null && _remoteRenderer.srcObject != rtc.remoteStream) {
       setState(() {
         _remoteRenderer.srcObject = rtc.remoteStream;
       });
@@ -140,15 +125,12 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
       case RtcEventType.remoteStream:
         _bindStreams();
         break;
-
       case RtcEventType.callEnded:
         _handleCloseScreen();
         break;
-
       case RtcEventType.error:
         if (mounted) _showErrorAndClose('حدث خطأ في مكالمة الفيديو');
         break;
-
       default:
         break;
     }
@@ -216,7 +198,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) async {
+      onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         await _endCall();
       },
@@ -225,34 +207,15 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         body: SafeArea(
           child: Stack(
             children: [
-              // 1. الفيديو البعيد (ملء الشاشة)
-              Positioned.fill(
-                child: _buildRemoteVideo(rtc),
-              ),
-
-              // 2. الشريط العلوي للمعلومات
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: _buildTopInfoBar(rtc),
-              ),
-
-              // 3. الفيديو المحلي (PIP - القابل للسحب)
+              Positioned.fill(child: _buildRemoteVideo(rtc)),
+              Positioned(top: 0, left: 0, right: 0, child: _buildTopInfoBar(rtc)),
               if (rtc.isVideoEnabled && _localRenderer.srcObject != null)
                 Positioned(
                   left: _pipPosition.dx,
                   top: _pipPosition.dy,
                   child: _buildLocalVideo(size),
                 ),
-
-              // 4. أزرار التحكم السفلية
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: _buildControls(rtc),
-              ),
+              Positioned(bottom: 0, left: 0, right: 0, child: _buildControls(rtc)),
             ],
           ),
         ),
@@ -261,7 +224,6 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   Widget _buildRemoteVideo(RtcService rtc) {
-    // الاعتماد المباشر على وجود srcObject لضمان عدم حجب العرض
     if (_remoteRenderer.srcObject == null) {
       return Container(
         color: const Color(0xFF0A1A1F),
@@ -282,24 +244,14 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 ),
                 alignment: Alignment.center,
                 child: Text(
-                  widget.peer.name.isNotEmpty
-                      ? widget.peer.name[0].toUpperCase()
-                      : '?',
-                  style: const TextStyle(
-                    fontSize: 55,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  widget.peer.name.isNotEmpty ? widget.peer.name[0].toUpperCase() : '?',
+                  style: const TextStyle(fontSize: 55, color: Colors.white, fontWeight: FontWeight.bold),
                 ),
               ),
               const SizedBox(height: 24),
               Text(
                 widget.peer.name,
-                style: const TextStyle(
-                  fontSize: 24,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: const TextStyle(fontSize: 24, color: Colors.white, fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -320,11 +272,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         setState(() {
           double newX = _pipPosition.dx + details.delta.dx;
           double newY = _pipPosition.dy + details.delta.dy;
-
-          // تقييد حركة النافذة داخل أبعاد الشاشة
           newX = newX.clamp(10.0, screenSize.width - 120.0);
           newY = newY.clamp(60.0, screenSize.height - 240.0);
-
           _pipPosition = Offset(newX, newY);
         });
       },
@@ -333,17 +282,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         height: 160,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.6),
-            width: 2,
-          ),
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black45,
-              blurRadius: 8,
-              offset: Offset(0, 4),
-            ),
-          ],
+          border: Border.all(color: Colors.white.withOpacity(0.6), width: 2),
+          boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 4))],
         ),
         clipBehavior: Clip.antiAlias,
         child: RTCVideoView(
@@ -362,10 +302,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Colors.black.withOpacity(0.75),
-            Colors.transparent,
-          ],
+          colors: [Colors.black.withOpacity(0.75), Colors.transparent],
         ),
       ),
       child: Row(
@@ -383,11 +320,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
               children: [
                 Text(
                   widget.peer.name,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.w600),
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
@@ -414,10 +347,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: [
-            Colors.black.withOpacity(0.85),
-            Colors.transparent,
-          ],
+          colors: [Colors.black.withOpacity(0.85), Colors.transparent],
         ),
       ),
       child: Column(
@@ -433,9 +363,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 onTap: () => rtc.toggleMute(),
               ),
               _ControlButton(
-                icon: rtc.isVideoEnabled
-                    ? Icons.videocam
-                    : Icons.videocam_off,
+                icon: rtc.isVideoEnabled ? Icons.videocam : Icons.videocam_off,
                 label: rtc.isVideoEnabled ? 'إيقاف الفيديو' : 'تشغيل',
                 active: !rtc.isVideoEnabled,
                 onTap: () => rtc.toggleVideo(),
@@ -447,9 +375,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 onTap: () => rtc.switchCamera(),
               ),
               _ControlButton(
-                icon: rtc.isSpeakerOn
-                    ? Icons.volume_up
-                    : Icons.volume_off,
+                icon: rtc.isSpeakerOn ? Icons.volume_up : Icons.volume_off,
                 label: rtc.isSpeakerOn ? 'المكبر مفعل' : 'مكبر الصوت',
                 active: rtc.isSpeakerOn,
                 onTap: () => rtc.toggleSpeaker(),
@@ -501,10 +427,7 @@ class _ControlButton extends StatelessWidget {
         const SizedBox(height: 6),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 11,
-            color: Colors.white.withOpacity(0.85),
-          ),
+          style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.85)),
         ),
       ],
     );
@@ -526,11 +449,7 @@ class _HangupButton extends StatelessWidget {
         onTap: onTap,
         child: const Padding(
           padding: EdgeInsets.all(18),
-          child: Icon(
-            Icons.call_end,
-            size: 32,
-            color: Colors.white,
-          ),
+          child: Icon(Icons.call_end, size: 32, color: Colors.white),
         ),
       ),
     );
