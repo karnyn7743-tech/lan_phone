@@ -418,6 +418,7 @@ class RtcService extends ChangeNotifier {
   Future<bool> acceptCall() async {
     if (_callState != AppConstants.callStateRinging &&
         _callState != AppConstants.callStateConnecting) {
+      debugPrint('[RTC] ❌ Cannot accept: invalid call state ($_callState)');
       return false;
     }
 
@@ -447,7 +448,7 @@ class RtcService extends ChangeNotifier {
         'offerToReceiveAudio': true,
         'offerToReceiveVideo': _callType == AppConstants.callTypeVideo,
       });
-      
+
       await _pc!.setLocalDescription(answer);
 
       final fixedAnswer = _fixSdp(answer.sdp ?? '');
@@ -459,10 +460,23 @@ class RtcService extends ChangeNotifier {
         'sdpType': answer.type,
       });
 
-      debugPrint('[RTC] ✅ Call accepted & answer sent successfully');
+      _callState = AppConstants.callStateConnected;
+      _callStartedAt = DateTime.now();
+      await _updateCallLogState(AppConstants.callStateConnected);
+
+      _eventController.add(RtcEvent(
+        type: RtcEventType.callAccepted,
+        callId: _currentCallId,
+        peerDeviceId: _peerDeviceId,
+        peerName: _peerName,
+        callType: _callType,
+      ));
+
+      notifyListeners();
+      debugPrint('[RTC] ✅ Call accepted & tracks setup complete');
       return true;
     } catch (e) {
-      debugPrint('[RTC] acceptCall error: $e');
+      debugPrint('[RTC] ❌ acceptCall error: $e');
       await endCall(reason: 'error');
       return false;
     }
