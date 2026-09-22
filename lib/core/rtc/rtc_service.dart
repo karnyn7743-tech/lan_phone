@@ -359,7 +359,7 @@ class RtcService extends ChangeNotifier {
 
   Future<void> _dismissCallkit() async {
     try {
-      await FlutterCallkitIncoming.endCall(_currentCallId);
+      await FlutterCallkitIncoming.endAllCalls();
     } catch (e) {
       debugPrint('[RTC] dismissCallkit error: $e');
     }
@@ -428,6 +428,9 @@ class RtcService extends ChangeNotifier {
     }
 
     try {
+      // إغلاق إشعار CallKit العلوي لمنع تداخله مع واجهة التطبيق
+      await _dismissCallkit();
+
       _callState = AppConstants.callStateConnecting;
       notifyListeners();
 
@@ -738,6 +741,11 @@ class RtcService extends ChangeNotifier {
         event.track.enabled = true;
         await Helper.setSpeakerphoneOn(_isSpeakerOn);
       }
+
+      // تحويل حالة المكالمة وتفعيل التحديثات فور وصول الصوت/الفيديو
+      _callState = AppConstants.callStateConnected;
+      _callStartedAt ??= DateTime.now();
+      await _updateCallLogState(AppConstants.callStateConnected);
 
       notifyListeners();
 
