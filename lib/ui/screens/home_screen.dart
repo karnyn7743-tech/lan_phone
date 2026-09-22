@@ -63,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _navigateToCallScreen(RtcEvent event) {
-    // البحث عن الجهاز المكتشف باستخدام المعرف الفريد للحصول على رقمه وقدراته المسجلة
+    // البحث عن الجهاز المكتشف باستخدام المعرف الفريد للحصول على بياناته المسجلة
     final discovery = context.read<DeviceDiscovery>();
     final matchedDevice = discovery.onlineDevices.firstWhere(
       (d) => d.deviceId == event.peerDeviceId,
@@ -74,6 +74,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ip: '',
         port: 0,
         capabilities: const [],
+        isOnline: true, // <-- أُضيفت هنا
         lastSeen: DateTime.now(),
       ),
     );
@@ -85,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ip: matchedDevice.ip,
       port: matchedDevice.port,
       capabilities: matchedDevice.capabilities,
+      isOnline: matchedDevice.isOnline, // <-- أُضيفت هنا
       lastSeen: DateTime.now(),
     );
 
