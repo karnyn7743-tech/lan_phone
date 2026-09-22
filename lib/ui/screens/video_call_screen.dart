@@ -261,7 +261,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   Widget _buildRemoteVideo(RtcService rtc) {
-    if (_remoteRenderer.srcObject == null || !rtc.hasRemoteVideo) {
+    // الاعتماد المباشر على وجود srcObject لضمان عدم حجب العرض
+    if (_remoteRenderer.srcObject == null) {
       return Container(
         color: const Color(0xFF0A1A1F),
         child: Center(
