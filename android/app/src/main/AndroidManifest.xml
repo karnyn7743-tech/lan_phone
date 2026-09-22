@@ -121,7 +121,7 @@
         <!-- ============================================================ -->
         <!-- خدمات واستقبال CallKit المصرحة لمنع الانهيار عند الاتصال -->
         <!-- ============================================================ -->
-        <active android:name="com.hiennguyen.flutter_callkit_incoming.CallkitIncomingBroadcastReceiver"
+        <receiver android:name="com.hiennguyen.flutter_callkit_incoming.CallkitIncomingBroadcastReceiver"
             android:exported="true" />
 
         <!-- عدم حذف هذا الوسم لكي يستطيع فلاتر التعرف على المكونات -->
