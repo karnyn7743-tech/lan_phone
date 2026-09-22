@@ -15,6 +15,7 @@ import '../../core/constants.dart';
 import '../../core/discovery/device_discovery.dart';
 import '../../core/discovery/discovered_device.dart';
 import '../../core/messaging/message_service.dart';
+import '../../core/rtc/rtc_service.dart';
 import '../../core/services/app_lifecycle_service.dart';
 import '../../core/services/audio_recorder_service.dart';
 import '../../data/database/database_helper.dart';
@@ -57,6 +58,9 @@ class _ChatScreenState extends State<ChatScreen> {
   MessageService? _messageService;
   AppLifecycleService? _lifecycleService;
   StreamSubscription<MessageEvent>? _eventSub;
+
+  // ✅ استماع لأحداث WebRTC (لفتح شاشة المكالمة الواردة)
+  StreamSubscription<RtcEvent>? _rtcEventSub;
 
   // ============================================
   // === الحالة ===
@@ -122,6 +126,10 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       _eventSub = _messageService!.events.listen(_onMessageEvent);
+
+      // ✅ استمع لأحداث WebRTC لفتح شاشة المكالمة عند ورودها
+      _rtcEventSub = context.read<RtcService>().events.listen(_onRtcEvent);
+
       _lifecycleService!.setOpenChat(widget.peer.deviceId);
 
       await _loadMessages();
@@ -141,6 +149,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _lifecycleService?.clearOpenChat();
     _eventSub?.cancel();
+    _rtcEventSub?.cancel();
     _recordingTimer?.cancel();
     AudioRecorderService.instance.cancel();
     _inputController.dispose();
@@ -149,6 +158,37 @@ class _ChatScreenState extends State<ChatScreen> {
     _inputFocus.dispose();
     _searchFocus.dispose();
     super.dispose();
+  }
+
+  // ============================================
+  // === ✅ معالجة أحداث WebRTC ===
+  // ============================================
+
+  void _onRtcEvent(RtcEvent event) {
+    if (!mounted) return;
+    if (event.type != RtcEventType.incomingCall) return;
+    if (event.peerDeviceId != widget.peer.deviceId) return;
+
+    // افتح الشاشة المناسبة كـ "مستقبِل"
+    if (event.callType == AppConstants.callTypeVideo) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => VideoCallScreen(
+            peer: widget.peer,
+            isCaller: false,
+          ),
+        ),
+      );
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AudioCallScreen(
+            peer: widget.peer,
+            isCaller: false,
+          ),
+        ),
+      );
+    }
   }
 
   // ============================================
