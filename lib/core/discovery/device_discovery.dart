@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:android_id/android_id.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -196,33 +197,63 @@ class DeviceDiscovery extends ChangeNotifier {
   // === الهوية (Identity + Number) ===
   // ============================================
 
+  /// ✅ توليد/تحميل معرّف الجهاز الثابت
+  ///
+  /// يستخدم:
+  ///   - Android: ANDROID_ID (Settings.Secure.ANDROID_ID) — ثابت عبر إعادة التثبيت
+  ///   - iOS: identifierForVendor (IDFV) — ثابت طالما يوجد تطبيق من نفس المطوّر
+  ///   - Fallback: UUID مخزّن في SharedPreferences (يُستخدم فقط لو فشل كل شيء)
   Future<void> _loadOrCreateIdentity() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // 1) معرّف الجهاز الثابت برمجياً
+    // 1) معرّف الجهاز الثابت
     String id = '';
+
     try {
-      final deviceInfo = DeviceInfoPlugin();
       if (Platform.isAndroid) {
-        final androidInfo = await deviceInfo.androidInfo;
-        // androidInfo.id يحفظ معرف العتاد الفريد للأنظمة والذي لا يتغير بإعادة التثبيت
-        id = androidInfo.id;
+        // ✅ ANDROID_ID الرسمي — ثابت عبر إعادة التثبيت
+        final androidId = await AndroidId().getId();
+        if (androidId != null && androidId.isNotEmpty) {
+          id = androidId;
+          debugPrint('[Discovery] ✅ ANDROID_ID: $id');
+        } else {
+          debugPrint('[Discovery] ⚠️ ANDROID_ID returned null/empty');
+        }
       } else if (Platform.isIOS) {
-        final iosInfo = await deviceInfo.iosInfo;
-        id = iosInfo.identifierForVendor ?? const Uuid().v4();
+        // ✅ identifierForVendor — ثابت طالما يوجد تطبيق من نفس المطوّر
+        final iosInfo = await DeviceInfoPlugin().iosInfo;
+        final idfv = iosInfo.identifierForVendor;
+        if (idfv != null && idfv.isNotEmpty) {
+          id = idfv;
+          debugPrint('[Discovery] ✅ IDFV: $id');
+        } else {
+          debugPrint('[Discovery] ⚠️ IDFV returned null/empty');
+        }
       }
     } catch (e) {
-      debugPrint('[Discovery] Error getting hardware ID: $e');
+      debugPrint('[Discovery] Error getting stable ID: $e');
     }
 
+    // 2) Fallback — يُستخدم فقط لو فشل ANDROID_ID/IDFV (نادر جدًا)
     if (id.isEmpty) {
-      id = prefs.getString(AppConstants.keyDeviceId) ?? const Uuid().v4();
+      final stored = prefs.getString(AppConstants.keyDeviceId);
+      if (stored != null && stored.isNotEmpty) {
+        id = stored;
+        debugPrint('[Discovery] ℹ️ Using stored fallback ID: $id');
+      } else {
+        id = const Uuid().v4();
+        debugPrint(
+          '[Discovery] ⚠️ WARNING: Using random UUID fallback. '
+          'ID will change on reinstall.',
+        );
+      }
     }
 
     _deviceId = id;
     await prefs.setString(AppConstants.keyDeviceId, _deviceId);
+    debugPrint('[Discovery] Final Device ID: $_deviceId');
 
-    // 2) اسم الجهاز
+    // 3) اسم الجهاز
     var name = prefs.getString(AppConstants.keyDeviceName);
     if (name == null || name.isEmpty) {
       final shortId = _deviceId.length >= 4
@@ -233,7 +264,7 @@ class DeviceDiscovery extends ChangeNotifier {
     }
     _deviceName = name;
 
-    // 3) رقم الاتصال
+    // 4) رقم الاتصال
     var number = prefs.getString(AppConstants.keyDeviceNumber);
     if (number == null || number.isEmpty) {
       number = await _generateUniqueNumber();
@@ -375,7 +406,6 @@ class DeviceDiscovery extends ChangeNotifier {
 
   Future<void> _openUdpSocket() async {
     try {
-      // إغلاق أي Socket سابق إن وجد منعاً لحدوث الانهيار عند إعادة الفتح
       _udpSocket?.close();
       _udpSocket = null;
 
@@ -409,9 +439,7 @@ class DeviceDiscovery extends ChangeNotifier {
       final text = utf8.decode(datagram.data);
       final data = jsonDecode(text) as Map<String, dynamic>;
       _handleIncoming(data, datagram.address.address);
-    } catch (_) {
-      // حزمة غير صالحة — تجاهل
-    }
+    } catch (_) {}
   }
 
   // ============================================
