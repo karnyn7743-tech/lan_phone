@@ -217,9 +217,14 @@ class _AppRootState extends State<_AppRoot> {
   void _onRtcEvent(RtcEvent event) {
     switch (event.type) {
       case RtcEventType.incomingCall:
+        // ✅ افتح شاشة المكالمة الواردة فورًا (للمستقبِل)
+        _openCallScreen(event);
         break;
       case RtcEventType.callAccepted:
-        _openCallScreen(event);
+        // الشاشة مفتوحة بالفعل على المستقبِل — لا تفتحها مرة ثانية
+        if (!_callScreenOpen) {
+          _openCallScreen(event);
+        }
         break;
       case RtcEventType.callEnded:
         if (_callScreenOpen) {
