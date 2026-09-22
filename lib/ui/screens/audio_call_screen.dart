@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart0:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -41,8 +41,9 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _rtc = context.read<RtcService>();
 
-      // الاستماع لأحداث RTC
+      // الاستماع لأحداث RTC وتغيرات الحالة
       _rtcEventSub = _rtc!.events.listen(_onRtcEvent);
+      _rtc!.addListener(_onRtcChanged);
 
       // إذا كنا المتصلين، ابدأ المكالمة
       if (widget.isCaller) {
@@ -69,8 +70,15 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
   @override
   void dispose() {
     _rtcEventSub?.cancel();
+    _rtc?.removeListener(_onRtcChanged);
     _durationTimer?.cancel();
     super.dispose();
+  }
+
+  void _onRtcChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _tickDuration() {
@@ -78,7 +86,7 @@ class _AudioCallScreenState extends State<AudioCallScreen> {
     if (start == null) return;
 
     final elapsed = DateTime.now().difference(start);
-    if (elapsed != _elapsed && mounted) {
+    if (elapsed.inSeconds != _elapsed.inSeconds && mounted) {
       setState(() => _elapsed = elapsed);
     }
   }
