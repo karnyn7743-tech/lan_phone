@@ -228,7 +228,7 @@ class RtcService extends ChangeNotifier {
         'offerToReceiveAudio': true,
         'offerToReceiveVideo': callType == AppConstants.callTypeVideo,
       });
-      
+
       await _pc!.setLocalDescription(offer);
 
       final fixedSdp = _fixSdp(offer.sdp ?? '');
@@ -722,11 +722,11 @@ class RtcService extends ChangeNotifier {
 
     _pc!.onTrack = (RTCTrackEvent event) async {
       debugPrint('[RTC] 🎯 Remote track received: ${event.track.kind}');
-      
+
       if (event.streams.isNotEmpty && event.streams[0] != null) {
         _remoteStream = event.streams[0];
       } else {
-        _remoteStream ??= await awaitObjectStream();
+        _remoteStream ??= await createLocalMediaStream('remote_stream');
         _remoteStream!.addTrack(event.track);
       }
 
@@ -777,10 +777,6 @@ class RtcService extends ChangeNotifier {
     };
   }
 
-  Future<MediaStream> awaitObjectStream() async {
-    return _remoteStream ??= await createLocalMediaStream('remote_stream');
-  }
-
   Future<void> _openLocalMedia(String callType) async {
     final constraints = <String, dynamic>{};
     constraints.addAll(_audioConstraints);
@@ -800,7 +796,7 @@ class RtcService extends ChangeNotifier {
 
   Future<void> _addLocalTracks() async {
     if (_localStream == null || _pc == null) return;
-    
+
     for (final track in _localStream!.getTracks()) {
       await _pc!.addTrack(track, _localStream!);
     }
@@ -826,7 +822,8 @@ class RtcService extends ChangeNotifier {
   }
 
   Future<void> toggleVideo() async {
-    if (_localStream == null) return;
+    if (_localStream == null || _pc == null) return;
+
     final videoTracks = _localStream!.getVideoTracks();
 
     if (videoTracks.isEmpty && !_isVideoEnabled) {
@@ -834,7 +831,28 @@ class RtcService extends ChangeNotifier {
         final stream =
             await navigator.mediaDevices.getUserMedia(_videoConstraints);
         final newTrack = stream.getVideoTracks().first;
-        await _pc?.addTrack(newTrack, _localStream!);
+        _localStream!.addTrack(newTrack);
+
+        final senders = await _pc!.getSenders();
+        final videoSender = senders.firstWhere(
+          (s) => s.track?.kind == 'video',
+          orElse: () => null as RTCRtpSender,
+        );
+
+        if (videoSender != null) {
+          await videoSender.replaceTrack(newTrack);
+        } else {
+          await _pc!.addTrack(newTrack, _localStream!);
+          // إعادة تفاوض جديدة للطرف الآخر عند إضافة مسار
+          final offer = await _pc!.createOffer();
+          await _pc!.setLocalDescription(offer);
+          await _signaling?.sendTo(_peerDeviceId, {
+            'type': AppConstants.msgSdpOffer,
+            'callId': _currentCallId,
+            'sdp': _fixSdp(offer.sdp ?? ''),
+            'sdpType': offer.type,
+          });
+        }
         _isVideoEnabled = true;
       } catch (e) {
         debugPrint('[RTC] re-enable video error: $e');
