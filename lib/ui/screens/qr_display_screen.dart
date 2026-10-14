@@ -45,7 +45,6 @@ class _QrDisplayScreenState extends State<QrDisplayScreen> {
   String _fullName = '';
   String _phone = '';
   String _mac = '';
-  bool _macAutoDetected = false;
   bool _loadingMac = true;
 
   final TextEditingController _nameCtrl = TextEditingController();
@@ -81,32 +80,19 @@ class _QrDisplayScreenState extends State<QrDisplayScreen> {
     final prefs = await SharedPreferences.getInstance();
     final savedName = prefs.getString(AppConstants.keyFullName) ?? '';
     final savedPhone = prefs.getString(AppConstants.keyPhone) ?? '';
-    final savedMac = prefs.getString(AppConstants.keyMacAddress) ?? '';
-
-    // محاولة القراءة التلقائية لـ MAC
-    String macToUse = savedMac;
-    bool autoDetected = false;
-
-    try {
-      final auto = await MacUtils.tryReadMacAutomatically();
-      if (auto != null && auto.isNotEmpty) {
-        macToUse = auto;
-        autoDetected = true;
-      }
-    } catch (_) {}
+    final savedMac = await MacUtils.getSavedMac() ?? '';
 
     if (!mounted) return;
 
     setState(() {
       _fullName = savedName;
       _phone = savedPhone;
-      _mac = macToUse;
-      _macAutoDetected = autoDetected;
+      _mac = savedMac;
       _loadingMac = false;
 
       _nameCtrl.text = savedName;
       _phoneCtrl.text = savedPhone;
-      _macCtrl.text = macToUse;
+      _macCtrl.text = savedMac;
     });
   }
 
@@ -122,7 +108,11 @@ class _QrDisplayScreenState extends State<QrDisplayScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(AppConstants.keyFullName, _fullName);
     await prefs.setString(AppConstants.keyPhone, _phone);
-    await prefs.setString(AppConstants.keyMacAddress, _mac);
+
+    // حفظ MAC عبر MacUtils (يتحقق من الصيغة قبل الحفظ)
+    if (_mac.isNotEmpty && MacUtils.validate(_mac)) {
+      await MacUtils.saveMac(_mac);
+    }
   }
 
   // ============================================
@@ -140,10 +130,7 @@ class _QrDisplayScreenState extends State<QrDisplayScreen> {
   }
 
   void _onMacChanged(String value) {
-    setState(() {
-      _mac = value.toUpperCase();
-      _macAutoDetected = false;
-    });
+    setState(() => _mac = value.toUpperCase());
     _scheduleSave();
   }
 
@@ -428,9 +415,8 @@ class _QrDisplayScreenState extends State<QrDisplayScreen> {
           // ============================================
           _buildTip(
             isDark: isDark,
-            text: _macAutoDetected
-                ? 'تم قراءة MAC تلقائيًا. راجعه مع بيانات جهازك قبل العرض.'
-                : 'أدخل عنوان MAC الخاص بالواي فاي. تجده في: الإعدادات ← حول الهاتف ← الحالة',
+            text: 'أدخل عنوان MAC الخاص بالواي فاي.\n'
+                'تجده في: الإعدادات ← حول الهاتف ← الحالة',
           ),
           const SizedBox(height: 32),
         ],
@@ -550,50 +536,15 @@ class _QrDisplayScreenState extends State<QrDisplayScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Text(
-              'عنوان MAC للواي فاي',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: isDark
-                    ? AppTheme.darkTextSecondary
-                    : AppTheme.lightTextSecondary,
-              ),
-            ),
-            const Spacer(),
-            if (_macAutoDetected)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 2,
-                ),
-                decoration: BoxDecoration(
-                  color: AppTheme.successColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.check_circle,
-                      size: 11,
-                      color: AppTheme.successColor,
-                    ),
-                    SizedBox(width: 4),
-                    Text(
-                      'تلقائي',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.successColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
+        Text(
+          'عنوان MAC للواي فاي',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: isDark
+                ? AppTheme.darkTextSecondary
+                : AppTheme.lightTextSecondary,
+          ),
         ),
         const SizedBox(height: 6),
         TextField(
