@@ -101,7 +101,25 @@ class _QrScannerScreenState extends State<QrScannerScreen>
     // اهتزاز خفيف
     HapticFeedback.mediumImpact();
 
-    // حلّل QR
+    // ✅ تحقق أولًا: هل هو رمز تسجيل شبكة؟ (غير مخصص لهذا الماسح)
+    if (QrService.isNetworkRegistrationQr(raw)) {
+      setState(() {
+        _errorMessage = 'هذا رمز تسجيل شبكة WiFi\n'
+            'مخصص لتطبيق إدارة المشتركين\n'
+            'ولا يمكن استخدامه للربط بين الأجهزة';
+        _isProcessing = false;
+      });
+      HapticFeedback.heavyImpact();
+
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() => _errorMessage = null);
+        }
+      });
+      return;
+    }
+
+    // حلّل QR (كرمز ربط جهاز)
     final data = QrService.decode(raw);
 
     if (data == null) {
