@@ -7,18 +7,26 @@ import '../discovery/discovered_device.dart';
 
 /// ============================================================
 /// خدمة ترميز وفك ترميز بيانات QR
+/// تدعم نوعين من الرموز:
+///   1) peer_link   — للربط بجهاز آخر يستخدم LanPhone
+///   2) network_registration — لتسجيل الجهاز في شبكة WiFi
+///                              (يقرأه تطبيق إدارة المشتركين)
 /// ============================================================
 class QrService {
   QrService._();
 
-  /// إصدار الصيغة الحالي
+  /// إصدار صيغة QR للربط بين الأجهزة
   static const int _formatVersion = 1;
 
+  /// بادئة رمز تسجيل المشترك في شبكة الواي فاي
+  static const String networkPrefix = 'LANPHONE_CLIENT_ID:';
+
   // ============================================
-  // === الترميز (إنشاء QR) ===
+  // === 1) QR للربط بجهاز آخر (الموجود) ===
   // ============================================
 
   /// تحويل معلومات الجهاز إلى نص JSON للـ QR
+  /// (يُقرأ من قبل جهاز آخر يستخدم نفس التطبيق)
   static String encode({
     required String deviceId,
     required String number,
@@ -46,18 +54,50 @@ class QrService {
   }
 
   // ============================================
+  // === 2) QR لتسجيل الجهاز في شبكة WiFi (جديد) ===
+  // ============================================
+
+  /// توليد رمز QR بصيغة تطبيق إدارة المشتركين
+  ///
+  /// الصيغة المُخرجة:
+  /// ```
+  /// LANPHONE_CLIENT_ID:{"name":"...","deviceId":"...","macAddress":"...","phone":"..."}
+  /// ```
+  static String encodeNetworkRegistration({
+    required String fullName,
+    required String deviceId,
+    required String macAddress,
+    String? phone,
+  }) {
+    final payloadMap = {
+      'name': fullName.trim(),
+      'deviceId': deviceId.trim(),
+      'macAddress': macAddress.trim().toUpperCase(),
+      'phone': phone?.trim() ?? '',
+    };
+
+    return '$networkPrefix${jsonEncode(payloadMap)}';
+  }
+
+  // ============================================
   // === فك الترميز (قراءة QR) ===
   // ============================================
 
-  /// تحليل نص QR إلى نموذج جهاز
-  /// يُرجع `null` إذا كان النص غير صالح
+  /// تحليل نص QR إلى نموذج جهاز (لنوع peer_link فقط)
+  /// يُرجع `null` إذا كان النص غير صالح أو من نوع آخر
   static QrDeviceData? decode(String raw) {
     try {
       final trimmed = raw.trim();
 
+      // إذا كان رمز تسجيل شبكة، ارفضه (ليس لهذا التطبيق)
+      if (trimmed.startsWith(networkPrefix)) {
+        debugPrint('[QR] This is a network-registration QR — not for peer link');
+        return null;
+      }
+
       // يجب أن يبدأ بـ { (JSON)
       if (!trimmed.startsWith('{')) {
-        debugPrint('[QR] Not a LanPhone QR');
+        debugPrint('[QR] Not a LanPhone peer QR');
         return null;
       }
 
@@ -106,18 +146,45 @@ class QrService {
     }
   }
 
+  /// فك ترميز رمز تسجيل شبكة
+  /// (قد يُستخدم لو أردت مستقبلًا التأكد من الرموز المولّدة)
+  static NetworkRegistrationData? decodeNetworkRegistration(String raw) {
+    try {
+      final trimmed = raw.trim();
+      if (!trimmed.startsWith(networkPrefix)) return null;
+
+      final jsonStr = trimmed.substring(networkPrefix.length);
+      final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+
+      return NetworkRegistrationData(
+        fullName: (data['name'] as String?) ?? '',
+        deviceId: (data['deviceId'] as String?) ?? '',
+        macAddress: (data['macAddress'] as String?) ?? '',
+        phone: (data['phone'] as String?) ?? '',
+      );
+    } catch (e) {
+      debugPrint('[QR] decodeNetworkRegistration error: $e');
+      return null;
+    }
+  }
+
   // ============================================
   // === التحقق من الصلاحية ===
   // ============================================
 
-  /// هل هذا النص QR صالح للتطبيق؟
-  static bool isValidQr(String raw) {
+  /// هل هذا النص QR صالح للربط بجهاز آخر؟
+  static bool isValidPeerQr(String raw) {
     return decode(raw) != null;
+  }
+
+  /// هل هذا النص QR لتسجيل شبكة؟
+  static bool isNetworkRegistrationQr(String raw) {
+    return raw.trim().startsWith(networkPrefix);
   }
 }
 
 // ============================================================
-// === نموذج البيانات المُستخرجة من QR ===
+// === نموذج البيانات المُستخرجة من QR (peer_link) ===
 // ============================================================
 class QrDeviceData {
   final String deviceId;
@@ -136,7 +203,7 @@ class QrDeviceData {
     required this.capabilities,
   });
 
-  /// تحويل إلى `DiscoveredDevice` (بحالة "غير متصل" حتى يتم اكتشافه)
+  /// تحويل إلى `DiscoveredDevice`
   DiscoveredDevice toDiscoveredDevice({bool isOnline = false}) {
     return DiscoveredDevice(
       deviceId: deviceId,
@@ -153,4 +220,25 @@ class QrDeviceData {
   @override
   String toString() =>
       'QrDeviceData($name, #$number, $ip:$port)';
+}
+
+// ============================================================
+// === نموذج بيانات تسجيل الشبكة (network_registration) ===
+// ============================================================
+class NetworkRegistrationData {
+  final String fullName;
+  final String deviceId;
+  final String macAddress;
+  final String phone;
+
+  const NetworkRegistrationData({
+    required this.fullName,
+    required this.deviceId,
+    required this.macAddress,
+    required this.phone,
+  });
+
+  @override
+  String toString() =>
+      'NetworkRegistrationData($fullName, $deviceId, $macAddress, $phone)';
 }
