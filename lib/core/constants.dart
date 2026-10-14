@@ -115,6 +115,11 @@ class AppConstants {
   static const String keyRingtone = 'ringtone';
   static const String keyVibration = 'vibration';
 
+  // ✅ جديد — لتسجيل الشبكة
+  static const String keyFullName = 'full_name';
+  static const String keyPhone = 'phone';
+  static const String keyMacAddress = 'mac_address';
+
   // ============================================
   // === أنواع الرسائل (Signaling) ===
   // ============================================
