@@ -1,0 +1,94 @@
+workflows:
+  android-workflow:
+    name: LanPhone Android Build
+
+    max_build_duration: 180
+    instance_type: mac_mini_m2
+
+    environment:
+      # ✅ Flutter حديث يتوافق مع AGP 8.11.1 و Kotlin 2.2.20
+      flutter: 3.35.0
+      java: 17
+
+      vars:
+        PACKAGE_NAME: "com.lanphone.app"
+        ANDROID_NDK_VERSION: "27.0.12077973"
+        APK_PATH: "build/app/outputs/flutter-apk/app-release.apk"
+
+    pre_build_script: |
+      echo "=== Flutter Version ==="
+      flutter --version
+      echo "=== Java Version ==="
+      java -version
+
+      # تثبيت NDK
+      if [ ! -d "$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION" ]; then
+        echo "Installing NDK $ANDROID_NDK_VERSION..."
+        yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
+          "ndk;$ANDROID_NDK_VERSION" || true
+      fi
+
+      # إنشاء مجلدات الأصول
+      mkdir -p assets/sounds assets/icons
+      touch assets/sounds/.gitkeep assets/icons/.gitkeep
+
+      # إنشاء local.properties
+      echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+      echo "flutter.sdk=$FLUTTER_ROOT" >> android/local.properties
+      echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK_VERSION" >> android/local.properties
+
+    scripts:
+      # ============================================
+      # ✅ الأهم: حذف pubspec.lock ثم الترقية القسرية
+      # ============================================
+      - name: Remove lock file
+        script: |
+          rm -f pubspec.lock
+          echo "✅ تم حذف pubspec.lock"
+
+      - name: Clean project
+        script: flutter clean
+
+      # ✅ ترقية جميع المكتبات إلى أحدث إصدار
+      - name: Upgrade all dependencies
+        script: |
+          flutter pub upgrade --major-versions || flutter pub upgrade
+          echo "✅ تمت ترقية المكتبات"
+
+      - name: Get dependencies
+        script: flutter pub get
+
+      - name: Show outdated packages (diagnostic)
+        script: |
+          echo "=== مكتبات تحتاج تحديث ==="
+          flutter pub outdated || true
+
+      - name: Analyze code
+        script: |
+          flutter analyze || echo "⚠️ تحذيرات موجودة، نُكمل البناء"
+
+      - name: Build Release APK
+        script: |
+          flutter build apk \
+            --release \
+            --no-shrink \
+            --target-platform android-arm,android-arm64,android-x64
+
+      - name: Build Release App Bundle
+        script: |
+          flutter build appbundle \
+            --release \
+            --no-shrink
+
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
+      - build/app/outputs/bundle/release/app-release.aab
+      - build/app/outputs/symbols/
+
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true
