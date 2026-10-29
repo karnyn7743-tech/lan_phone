@@ -1,4 +1,4 @@
-package com.fawaz.lanphone.app
+package com.fawaz.lanphone
 
 import io.flutter.embedding.android.FlutterActivity
 
