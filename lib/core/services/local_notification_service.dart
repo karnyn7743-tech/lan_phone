@@ -347,6 +347,9 @@ class LocalNotificationService {
         return Priority.high;
       case Importance.max:
         return Priority.max;
+      // ✅ إضافة حالة unspecified التي أضافتها flutter_local_notifications
+      case Importance.unspecified:
+        return Priority.defaultPriority;
     }
   }
 
