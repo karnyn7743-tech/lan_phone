@@ -56,7 +56,7 @@ class AudioRecorderService {
       final session = await AudioSession.instance;
 
       // تكوين للتسجيل بجودة عالية
-      await session.configure(const AudioSessionConfiguration(
+      await session.configure(AudioSessionConfiguration(
         avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
         avAudioSessionCategoryOptions:
             AVAudioSessionCategoryOptions.allowBluetooth |
