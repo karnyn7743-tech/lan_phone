@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ✅ جديد
 
 import 'core/constants.dart';
 import 'core/discovery/device_discovery.dart';
@@ -28,6 +29,7 @@ import 'ui/screens/audio_call_screen.dart';
 import 'ui/screens/broadcast_screen.dart';
 import 'ui/screens/chat_screen.dart';
 import 'ui/screens/lock_screen.dart';
+import 'ui/screens/permission_setup_screen.dart'; // ✅ جديد
 import 'ui/screens/splash_screen.dart';
 import 'ui/screens/video_call_screen.dart';
 import 'ui/theme/app_theme.dart';
@@ -49,7 +51,7 @@ Future<void> main() async {
     debugPrint('[main] WebRTC init error: $e');
   }
 
-  // ✅ جديد — بدء خدمة الخلفية المستمرة
+  // ✅ بدء خدمة الخلفية المستمرة
   try {
     await BackgroundServiceManager.instance.start();
     debugPrint('[main] ✅ Background service started');
@@ -453,10 +455,31 @@ class _AppRootState extends State<_AppRoot> {
   }
 }
 
-class _AppGates extends StatelessWidget {
+// ✅ تم تحويلها إلى StatefulWidget لإدارة حالة شاشة الأذونات
+class _AppGates extends StatefulWidget {
   final Widget child;
 
   const _AppGates({required this.child});
+
+  @override
+  State<_AppGates> createState() => _AppGatesState();
+}
+
+class _AppGatesState extends State<_AppGates> {
+  bool? _setupCompleted;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSetup();
+  }
+
+  Future<void> _checkSetup() async {
+    final prefs = await SharedPreferences.getInstance();
+    final completed =
+        prefs.getBool(AppConstants.keyPermissionSetupCompleted) ?? false;
+    if (mounted) setState(() => _setupCompleted = completed);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -470,12 +493,31 @@ class _AppGates extends StatelessWidget {
       return const ActivationScreen();
     }
 
+    // ✅ انتظار قراءة حالة شاشة الأذونات
+    if (_setupCompleted == null) {
+      return const _LoadingGate();
+    }
+
+    // ✅ عرض شاشة الأذونات مرة واحدة
+    if (!_setupCompleted!) {
+      return PermissionSetupScreen(
+        onComplete: () async {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool(
+            AppConstants.keyPermissionSetupCompleted,
+            true,
+          );
+          if (mounted) setState(() => _setupCompleted = true);
+        },
+      );
+    }
+
     final locked = context.select<LockService, bool>((s) => s.isLocked);
     final inCall = context.select<RtcService, bool>((r) => r.isInCall);
 
     return Stack(
       children: [
-        child,
+        widget.child,
         if (locked && !inCall)
           const Positioned.fill(
             child: LockScreen(),
