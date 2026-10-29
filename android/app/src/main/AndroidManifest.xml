@@ -1,1 +1,52 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- ============================================================ -->
+    <!-- === KeyGen لا يحتاج أي أذونات خاصة ===                       -->
+    <!-- === يعمل offline بالكامل — لا إنترنت، لا كاميرا، لا شيء === -->
+    <!-- ============================================================ -->
+
+    <!-- ============================================================ -->
+    <!-- === التطبيق ===                                              -->
+    <!-- ============================================================ -->
+    <application
+        android:label="LanPhone KeyGen"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true"
+        tools:targetApi="34">
+
+        <!-- ============================================ -->
+        <!-- === النشاط الرئيسي ===                        -->
+        <!-- ============================================ -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ============================================ -->
+        <!-- === Flutter Embedding v2 ===                 -->
+        <!-- ============================================ -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+
+    </application>
+
+</manifest>
