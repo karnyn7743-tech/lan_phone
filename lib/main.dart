@@ -14,6 +14,7 @@ import 'core/providers/theme_provider.dart';
 import 'core/rtc/rtc_service.dart';
 import 'core/services/activation_service.dart';
 import 'core/services/app_lifecycle_service.dart';
+import 'core/services/background_service.dart';
 import 'core/services/broadcast_service.dart';
 import 'core/services/local_notification_service.dart';
 import 'core/services/lock_service.dart';
@@ -32,14 +33,8 @@ import 'ui/screens/video_call_screen.dart';
 import 'ui/theme/app_theme.dart';
 import 'ui/widgets/incoming_broadcast_dialog.dart';
 
-// ============================================================
-// === مفتاح التنقل العام ===
-// ============================================================
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-// ============================================================
-// === نقطة الدخول ===
-// ============================================================
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -47,7 +42,6 @@ Future<void> main() async {
     DeviceOrientation.portraitUp,
   ]);
 
-  // 0) ✅ تهيئة WebRTC (مهم جدًا لتعطيل mDNS على Android)
   try {
     await WebRTC.initialize();
     debugPrint('[main] ✅ WebRTC initialized');
@@ -55,14 +49,20 @@ Future<void> main() async {
     debugPrint('[main] WebRTC init error: $e');
   }
 
-  // 1) قاعدة البيانات
+  // ✅ جديد — بدء خدمة الخلفية المستمرة
+  try {
+    await BackgroundServiceManager.instance.start();
+    debugPrint('[main] ✅ Background service started');
+  } catch (e) {
+    debugPrint('[main] Background service error: $e');
+  }
+
   try {
     await DatabaseHelper.instance.init();
   } catch (e) {
     debugPrint('[main] Database init error: $e');
   }
 
-  // 2) الإشعارات المحلية
   try {
     await LocalNotificationService.instance.init();
     debugPrint('[main] Local notifications initialized');
@@ -70,22 +70,15 @@ Future<void> main() async {
     debugPrint('[main] Local notifications init error: $e');
   }
 
-  // 3) الأذونات
   try {
     await PermissionService.requestEssentialAtStartup();
   } catch (e) {
     debugPrint('[main] Permission request error: $e');
   }
 
-  // 4) Callkit (يُهيَّأ تلقائيًا في الإصدار الحالي)
-  debugPrint('[main] Callkit ready');
-
   runApp(const LanPhoneApp());
 }
 
-// ============================================================
-// === التطبيق الرئيسي ===
-// ============================================================
 class LanPhoneApp extends StatelessWidget {
   const LanPhoneApp({super.key});
 
@@ -93,107 +86,62 @@ class LanPhoneApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // ==========================================
-        // 1) مزوّد الثيم
-        // ==========================================
         ChangeNotifierProvider<ThemeProvider>(
           create: (_) => ThemeProvider(),
         ),
-
-        // ==========================================
-        // 2) خدمة الرنات
-        // ==========================================
         ChangeNotifierProvider<RingtoneService>(
           create: (_) => RingtoneService()..load(),
         ),
-
-        // ==========================================
-        // 3) دورة حياة التطبيق
-        // ==========================================
         ChangeNotifierProvider<AppLifecycleService>(
           create: (_) => AppLifecycleService(),
         ),
-
-        // ==========================================
-        // 4) قفل التطبيق بالبصمة
-        // ==========================================
         ChangeNotifierProvider<LockService>(
           create: (_) => LockService(),
         ),
-
-        // ==========================================
-        // 5) خدمة التنشيط
-        // ==========================================
         ChangeNotifierProvider<ActivationService>(
           create: (_) => ActivationService(),
         ),
-
-        // ==========================================
-        // 6) خدمة إشعارات Callkit
-        // ==========================================
         ChangeNotifierProvider<NotificationService>(
           create: (_) => NotificationService(),
         ),
-
-        // ==========================================
-        // 7) اكتشاف الأجهزة
-        // ==========================================
         ChangeNotifierProvider<DeviceDiscovery>(
           create: (_) => DeviceDiscovery()..start(),
         ),
-
-        // ==========================================
-        // 8) Signaling
-        // ==========================================
         ChangeNotifierProxyProvider<DeviceDiscovery, SignalingService>(
           create: (_) => SignalingService()..start(),
           update: (_, discovery, signaling) {
-            signaling?.attachDiscovery(discovery);
-            return signaling ?? SignalingService();
+            final service = signaling ?? SignalingService()..start();
+            service.attachDiscovery(discovery);
+            return service;
           },
         ),
-
-        // ==========================================
-        // 9) RTC
-        // ==========================================
-        ChangeNotifierProxyProvider2<SignalingService, NotificationService,
-            RtcService>(
+        ChangeNotifierProxyProvider2<SignalingService, NotificationService, RtcService>(
           create: (_) => RtcService(),
           update: (_, signaling, notification, rtc) {
-            rtc?.attachSignaling(signaling);
-            rtc?.attachNotification(notification);
-            return rtc ?? RtcService();
+            final service = rtc ?? RtcService();
+            service.attachSignaling(signaling);
+            service.attachNotification(notification);
+            return service;
           },
         ),
-
-        // ==========================================
-        // 10) خدمة البث الصوتي
-        // ==========================================
-        ChangeNotifierProxyProvider2<SignalingService, DeviceDiscovery,
-            BroadcastService>(
+        ChangeNotifierProxyProvider2<SignalingService, DeviceDiscovery, BroadcastService>(
           create: (_) => BroadcastService(),
           update: (_, signaling, discovery, broadcast) {
-            broadcast?.attach(
+            final service = broadcast ?? BroadcastService();
+            service.attach(
               signaling: signaling,
               discovery: discovery,
             );
-            return broadcast ?? BroadcastService();
+            return service;
           },
         ),
-
-        // ==========================================
-        // 11) الرسائل
-        // ==========================================
-        ChangeNotifierProxyProvider3<
-            DeviceDiscovery,
-            SignalingService,
-            AppLifecycleService,
-            MessageService>(
+        ChangeNotifierProxyProvider3<DeviceDiscovery, SignalingService, AppLifecycleService, MessageService>(
           create: (_) => MessageService(),
           update: (_, discovery, signaling, lifecycle, messages) {
-            messages?.attach(discovery, signaling);
-            messages?.attachLifecycle(lifecycle);
-            return messages ?? MessageService();
+            final service = messages ?? MessageService();
+            service.attach(discovery, signaling);
+            service.attachLifecycle(lifecycle);
+            return service;
           },
         ),
       ],
@@ -202,9 +150,6 @@ class LanPhoneApp extends StatelessWidget {
   }
 }
 
-// ============================================================
-// === جذر التطبيق ===
-// ============================================================
 class _AppRoot extends StatefulWidget {
   const _AppRoot();
 
@@ -213,9 +158,6 @@ class _AppRoot extends StatefulWidget {
 }
 
 class _AppRootState extends State<_AppRoot> {
-  // ============================================
-  // === المراجع ===
-  // ============================================
   StreamSubscription<RtcEvent>? _rtcSub;
   StreamSubscription<BroadcastEvent>? _broadcastSub;
 
@@ -227,14 +169,9 @@ class _AppRootState extends State<_AppRoot> {
   bool _broadcastDialogOpen = false;
   bool _broadcastScreenOpen = false;
 
-  // ============================================
-  // === دورة الحياة ===
-  // ============================================
-
   @override
   void initState() {
     super.initState();
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _setupListeners();
       _setupNotificationTapHandler();
@@ -249,10 +186,6 @@ class _AppRootState extends State<_AppRoot> {
     super.dispose();
   }
 
-  // ============================================
-  // === الإعداد ===
-  // ============================================
-
   void _setupListeners() {
     if (!mounted) return;
     _rtc = context.read<RtcService>();
@@ -261,10 +194,7 @@ class _AppRootState extends State<_AppRoot> {
   }
 
   void _setupNotificationTapHandler() {
-    LocalNotificationService.instance.onMessageTap = (
-      peerDeviceId,
-      messageId,
-    ) {
+    LocalNotificationService.instance.onMessageTap = (peerDeviceId, messageId) {
       _openChatFromNotification(peerDeviceId, messageId);
     };
   }
@@ -275,51 +205,45 @@ class _AppRootState extends State<_AppRoot> {
     _broadcastSub = _broadcastService!.events.listen(_onBroadcastEvent);
   }
 
-  // ============================================
-  // === الإشعارات ===
-  // ============================================
-
-  void _openChatFromNotification(
-    String peerDeviceId,
-    String? messageId,
-  ) {
+  void _openChatFromNotification(String peerDeviceId, String? messageId) {
     final nav = navigatorKey.currentState;
     if (nav == null) return;
 
     final peer = _discovery?.getDevice(peerDeviceId);
-    if (peer == null) {
-      debugPrint('[AppRoot] Peer not found: $peerDeviceId');
-      return;
-    }
+    if (peer == null) return;
 
-    nav.push(
+    nav.pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => ChatScreen(
           peer: peer,
           highlightMessageId: messageId,
         ),
       ),
+      (route) => route.isFirst,
     );
   }
-
-  // ============================================
-  // === أحداث RTC ===
-  // ============================================
 
   void _onRtcEvent(RtcEvent event) {
     switch (event.type) {
       case RtcEventType.incomingCall:
-        debugPrint('[AppRoot] Incoming call — Callkit handles UI');
-        break;
-
-      case RtcEventType.callAccepted:
+        // ✅ افتح شاشة المكالمة الواردة فورًا (للمستقبِل)
         _openCallScreen(event);
         break;
-
+      case RtcEventType.callAccepted:
+        // الشاشة مفتوحة بالفعل على المستقبِل — لا تفتحها مرة ثانية
+        if (!_callScreenOpen) {
+          _openCallScreen(event);
+        }
+        break;
       case RtcEventType.callEnded:
+        if (_callScreenOpen) {
+          final nav = navigatorKey.currentState;
+          if (nav != null && nav.canPop()) {
+            nav.pop();
+          }
+        }
         _callScreenOpen = false;
         break;
-
       default:
         break;
     }
@@ -331,63 +255,61 @@ class _AppRootState extends State<_AppRoot> {
     final nav = navigatorKey.currentState;
     if (nav == null) return;
 
-    final peer = _discovery?.getDevice(event.peerDeviceId);
-    if (peer == null) return;
+    // استخراج جهاز المتصل مع دمج بيانات الاسم الصحيحة لمنع بقاء الاسم القديم أو المجهول
+    final discovered = _discovery?.getDevice(event.peerDeviceId);
+    final peer = discovered ??
+        DiscoveredDevice(
+          deviceId: event.peerDeviceId,
+          number: '',
+          name: _rtc?.peerName.isNotEmpty == true
+              ? _rtc!.peerName
+              : (event.peerName.isNotEmpty ? event.peerName : 'جهاز محلي'),
+          ip: '',
+          port: 0,
+          capabilities: const ['voice', 'video'],
+          lastSeen: DateTime.now(),
+          isOnline: true,
+        );
 
     _callScreenOpen = true;
 
-    final Widget screen = event.callType == AppConstants.callTypeVideo
-        ? VideoCallScreen(peer: peer, isCaller: false)
-        : AudioCallScreen(peer: peer, isCaller: false);
+    // تمرير حالة هل المستخدم هو البادئ بالمكالمة (isCaller) بدقة
+    final bool isCaller = _rtc?.isCaller ?? false;
 
-    nav
-        .push(
-      MaterialPageRoute(builder: (_) => screen),
-    )
-        .then((_) {
+    final Widget screen = event.callType == AppConstants.callTypeVideo
+        ? VideoCallScreen(peer: peer, isCaller: isCaller)
+        : AudioCallScreen(peer: peer, isCaller: isCaller);
+
+    nav.push(MaterialPageRoute(builder: (_) => screen)).then((_) {
       _callScreenOpen = false;
     });
   }
-
-  // ============================================
-  // === أحداث البث ===
-  // ============================================
 
   void _onBroadcastEvent(BroadcastEvent event) {
     switch (event.type) {
       case BroadcastEventType.invitation:
         _showBroadcastInvitation(event);
         break;
-
       case BroadcastEventType.ended:
         _handleBroadcastEnded(event);
         break;
-
       case BroadcastEventType.disconnected:
         _handleBroadcastDisconnected(event);
         break;
-
       case BroadcastEventType.audioReceived:
-        // يُعالج تلقائيًا من BroadcastScreen
         break;
     }
   }
 
-  /// عرض دعوة بث واردة
   void _showBroadcastInvitation(BroadcastEvent event) {
-    if (_broadcastDialogOpen) {
-      _broadcastService?.rejectBroadcast(
-        event.broadcastId,
-        event.peerDeviceId,
-      );
+    final lockService = context.read<LockService>();
+    if (lockService.isLocked) {
+      _broadcastService?.rejectBroadcast(event.broadcastId, event.peerDeviceId);
       return;
     }
 
-    if (_callScreenOpen) {
-      _broadcastService?.rejectBroadcast(
-        event.broadcastId,
-        event.peerDeviceId,
-      );
+    if (_broadcastDialogOpen || _callScreenOpen || _broadcastScreenOpen) {
+      _broadcastService?.rejectBroadcast(event.broadcastId, event.peerDeviceId);
       return;
     }
 
@@ -406,14 +328,13 @@ class _AppRootState extends State<_AppRoot> {
           if (accept) {
             _acceptBroadcast(event);
           } else {
-            _broadcastService?.rejectBroadcast(
-              event.broadcastId,
-              event.peerDeviceId,
-            );
+            _broadcastService?.rejectBroadcast(event.broadcastId, event.peerDeviceId);
           }
         },
       ),
-    );
+    ).then((_) {
+      _broadcastDialogOpen = false;
+    });
   }
 
   Future<void> _acceptBroadcast(BroadcastEvent event) async {
@@ -429,24 +350,22 @@ class _AppRootState extends State<_AppRoot> {
     );
 
     if (!ok) {
-      ScaffoldMessenger.of(nav.overlay!.context).showSnackBar(
-        const SnackBar(
-          content: Text('تعذّر الانضمام للبث'),
-          backgroundColor: AppTheme.errorColor,
-        ),
-      );
+      if (nav.overlay?.context != null) {
+        ScaffoldMessenger.of(nav.overlay!.context).showSnackBar(
+          const SnackBar(
+            content: Text('تعذّر الانضمام للبث'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
       return;
     }
 
-    // افتح شاشة الاستماع
     _openBroadcastScreen();
   }
 
-  /// انتهى البث من المُذيع
   void _handleBroadcastEnded(BroadcastEvent event) {
-    if (_broadcastService?.isBroadcasting ?? false) {
-      return;
-    }
+    if (_broadcastService?.isBroadcasting ?? false) return;
 
     final nav = navigatorKey.currentState;
     if (nav == null) return;
@@ -456,15 +375,16 @@ class _AppRootState extends State<_AppRoot> {
       _broadcastScreenOpen = false;
     }
 
-    ScaffoldMessenger.of(nav.overlay!.context).showSnackBar(
-      SnackBar(
-        content: Text('انتهى بث ${event.peerName}'),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    if (nav.overlay?.context != null) {
+      ScaffoldMessenger.of(nav.overlay!.context).showSnackBar(
+        SnackBar(
+          content: Text('انتهى بث ${event.peerName}'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
-  /// فُقد الاتصال بالبث
   void _handleBroadcastDisconnected(BroadcastEvent event) {
     if (!(_broadcastService?.isListening ?? false)) return;
 
@@ -476,16 +396,17 @@ class _AppRootState extends State<_AppRoot> {
       _broadcastScreenOpen = false;
     }
 
-    ScaffoldMessenger.of(nav.overlay!.context).showSnackBar(
-      SnackBar(
-        content: Text('انقطع الاتصال ببث ${event.peerName}'),
-        backgroundColor: AppTheme.warningColor,
-        duration: const Duration(seconds: 3),
-      ),
-    );
+    if (nav.overlay?.context != null) {
+      ScaffoldMessenger.of(nav.overlay!.context).showSnackBar(
+        SnackBar(
+          content: Text('انقطع الاتصال ببث ${event.peerName}'),
+          backgroundColor: AppTheme.warningColor,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
-  /// فتح شاشة البث/الاستماع
   void _openBroadcastScreen() {
     if (_broadcastScreenOpen) return;
 
@@ -494,20 +415,14 @@ class _AppRootState extends State<_AppRoot> {
 
     _broadcastScreenOpen = true;
 
-    nav
-        .push(
+    nav.push(
       MaterialPageRoute(
         builder: (_) => const BroadcastScreen(),
       ),
-    )
-        .then((_) {
+    ).then((_) {
       _broadcastScreenOpen = false;
     });
   }
-
-  // ============================================
-  // === الواجهة ===
-  // ============================================
 
   @override
   Widget build(BuildContext context) {
@@ -530,20 +445,14 @@ class _AppRootState extends State<_AppRoot> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-
-      // بوابة التنشيط + القفل
       builder: (context, child) {
         return _AppGates(child: child ?? const SizedBox.shrink());
       },
-
       home: const SplashScreen(),
     );
   }
 }
 
-// ============================================================
-// === بوابات التطبيق (التنشيط + القفل) ===
-// ============================================================
 class _AppGates extends StatelessWidget {
   final Widget child;
 
@@ -551,7 +460,6 @@ class _AppGates extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1) فحص التنشيط
     final activation = context.watch<ActivationService>();
 
     if (activation.checking) {
@@ -562,7 +470,6 @@ class _AppGates extends StatelessWidget {
       return const ActivationScreen();
     }
 
-    // 2) بوابة القفل
     final locked = context.select<LockService, bool>((s) => s.isLocked);
     final inCall = context.select<RtcService, bool>((r) => r.isInCall);
 
@@ -578,9 +485,6 @@ class _AppGates extends StatelessWidget {
   }
 }
 
-// ============================================================
-// === شاشة التحميل المؤقتة ===
-// ============================================================
 class _LoadingGate extends StatelessWidget {
   const _LoadingGate();
 
