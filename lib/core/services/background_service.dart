@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui'; // ✅ إضافة هذا السطر لتعريف DartPluginRegistrant
+import 'dart:ui'; // ✅ لتعريف DartPluginRegistrant
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
@@ -37,7 +37,7 @@ class BackgroundServiceManager {
           initialNotificationTitle: 'LanPhone',
           initialNotificationContent: 'جاهز لاستقبال المكالمات',
           foregroundServiceNotificationId: _notificationId,
-          icon: 'ic_stat_lanphone',
+          // ✅ تم حذف بارامتر icon هنا لأنه غير مدعوم في هذا الإصدار
           foregroundServiceTypes: const [
             AndroidForegroundType.phoneCall,
             AndroidForegroundType.microphone,
