@@ -47,6 +47,8 @@ class BackgroundServiceManager {
           initialNotificationTitle: 'LanPhone',
           initialNotificationContent: 'جاهز لاستقبال المكالمات',
           foregroundServiceNotificationId: _notificationId,
+          // ✅ جديد — استخدام الأيقونة المخصصة (drawable/ic_stat_lanphone.xml)
+          icon: 'ic_stat_lanphone',
           // ⚠️ الأنواع يجب أن تطابق الأذونات المعلنة في Manifest
           foregroundServiceTypes: const [
             AndroidForegroundType.phoneCall,
