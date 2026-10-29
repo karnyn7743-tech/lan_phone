@@ -15,6 +15,7 @@ import '../../core/constants.dart';
 import '../../core/discovery/device_discovery.dart';
 import '../../core/discovery/discovered_device.dart';
 import '../../core/messaging/message_service.dart';
+import '../../core/rtc/rtc_service.dart';
 import '../../core/services/app_lifecycle_service.dart';
 import '../../core/services/audio_recorder_service.dart';
 import '../../data/database/database_helper.dart';
@@ -57,6 +58,9 @@ class _ChatScreenState extends State<ChatScreen> {
   MessageService? _messageService;
   AppLifecycleService? _lifecycleService;
   StreamSubscription<MessageEvent>? _eventSub;
+
+  // ✅ استماع لأحداث WebRTC (لفتح شاشة المكالمة الواردة)
+  StreamSubscription<RtcEvent>? _rtcEventSub;
 
   // ============================================
   // === الحالة ===
@@ -122,6 +126,10 @@ class _ChatScreenState extends State<ChatScreen> {
       );
 
       _eventSub = _messageService!.events.listen(_onMessageEvent);
+
+      // ✅ استمع لأحداث WebRTC لفتح شاشة المكالمة عند ورودها
+      _rtcEventSub = context.read<RtcService>().events.listen(_onRtcEvent);
+
       _lifecycleService!.setOpenChat(widget.peer.deviceId);
 
       await _loadMessages();
@@ -141,6 +149,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _lifecycleService?.clearOpenChat();
     _eventSub?.cancel();
+    _rtcEventSub?.cancel();
     _recordingTimer?.cancel();
     AudioRecorderService.instance.cancel();
     _inputController.dispose();
@@ -149,6 +158,37 @@ class _ChatScreenState extends State<ChatScreen> {
     _inputFocus.dispose();
     _searchFocus.dispose();
     super.dispose();
+  }
+
+  // ============================================
+  // === ✅ معالجة أحداث WebRTC ===
+  // ============================================
+
+  void _onRtcEvent(RtcEvent event) {
+    if (!mounted) return;
+    if (event.type != RtcEventType.incomingCall) return;
+    if (event.peerDeviceId != widget.peer.deviceId) return;
+
+    // افتح الشاشة المناسبة كـ "مستقبِل"
+    if (event.callType == AppConstants.callTypeVideo) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => VideoCallScreen(
+            peer: widget.peer,
+            isCaller: false,
+          ),
+        ),
+      );
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AudioCallScreen(
+            peer: widget.peer,
+            isCaller: false,
+          ),
+        ),
+      );
+    }
   }
 
   // ============================================
@@ -916,7 +956,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ============================================
-  // === ✅ فحص إصدار Android ===
+  // === فحص إصدار Android ===
   // ============================================
 
   Future<int> _getAndroidSdkInt() async {
@@ -931,33 +971,22 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // ============================================
-  // === ✅ الأذونات حسب النوع والإصدار ===
+  // === الأذونات حسب النوع والإصدار ===
   // ============================================
 
-  /// يُرجع الأذونات المطلوبة حسب:
-  ///   - نوع الوسائط (صورة / فيديو / ملف)
-  ///   - إصدار Android
-  ///
-  /// ⚠️ ملاحظة مهمة:
-  ///   - Android 13+ (SDK 33): يستخدم `photos` / `videos`
-  ///   - Android ≤ 12: يستخدم `storage`
-  ///   - الملفات: **لا تحتاج أي إذن** (SAF — Storage Access Framework)
   Future<List<ph.Permission>> _getRequiredPermissions(
     String mediaType,
   ) async {
-    // ✅ الملفات: SAF → لا تحتاج أذونات
     if (mediaType == AppConstants.mediaFile) {
       return [];
     }
 
     final sdkInt = await _getAndroidSdkInt();
 
-    // iOS
     if (!Platform.isAndroid) {
       return [ph.Permission.photos];
     }
 
-    // Android 13+ (SDK 33+)
     if (sdkInt >= 33) {
       if (mediaType == AppConstants.mediaImage) {
         return [ph.Permission.photos];
@@ -967,24 +996,19 @@ class _ChatScreenState extends State<ChatScreen> {
       return [];
     }
 
-    // Android ≤ 12
     return [ph.Permission.storage];
   }
 
   // ============================================
-  // === ✅ اختيار وإرسال الوسائط (مُصحَّح) ===
+  // === اختيار وإرسال الوسائط ===
   // ============================================
 
   Future<void> _pickAndSendMedia(String mediaType) async {
     if (_isSendingMedia) return;
 
-    // ============================================
-    // === 1) فحص الأذونات ===
-    // ============================================
     final permissions = await _getRequiredPermissions(mediaType);
 
     if (permissions.isNotEmpty) {
-      // ✅ فحص مسبق: هل الإذن ممنوح أصلًا؟
       bool alreadyGranted = true;
       for (final p in permissions) {
         final status = await p.status;
@@ -1016,17 +1040,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (!mounted) return;
 
-    // ============================================
-    // === 2) الصور: إرسال متعدد ===
-    // ============================================
     if (mediaType == AppConstants.mediaImage) {
       await _pickAndSendMultipleImages();
       return;
     }
 
-    // ============================================
-    // === 3) الفيديو والملف: إرسال فردي ===
-    // ============================================
     String? pickedPath;
 
     try {
@@ -1093,7 +1111,6 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    // إذا اختار صورة واحدة → استخدم الدالة الفردية
     if (paths.length == 1) {
       await _sendSingleImage(paths.first);
       return;
@@ -1211,8 +1228,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return file?.path;
   }
 
-  /// ✅ file_picker يستخدم SAF (Storage Access Framework)
-  ///    → لا يحتاج أي إذن على الإطلاق!
   Future<String?> _pickFile() async {
     try {
       final result = await FilePicker.platform.pickFiles(
