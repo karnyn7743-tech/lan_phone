@@ -123,7 +123,7 @@ class ActivationService extends ChangeNotifier {
         // ✅ المحاولة الأولى: Android ID الحقيقي
         // (16 حرف hex — فريد لكل جهاز، حتى بين نفس الموديل)
         try {
-          const androidId = AndroidId();
+          final androidId = AndroidId();
           final id = await androidId.getId();
           if (id != null &&
               id.isNotEmpty &&
