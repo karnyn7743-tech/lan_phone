@@ -123,7 +123,7 @@ class ActivationService extends ChangeNotifier {
         // (16 حرف hex — فريد لكل جهاز، حتى بين نفس الموديل)
         try {
           final androidId = AndroidId();
-          final id = await androidId.getId();
+          final androidId = await AndroidId().getId();
           if (id != null &&
               id.isNotEmpty &&
               id != 'unknown' &&
