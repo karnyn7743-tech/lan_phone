@@ -120,6 +120,10 @@ class AppConstants {
   static const String keyPhone = 'phone';
   static const String keyMacAddress = 'mac_address';
 
+  // ✅ جديد — لتتبع اكتمال شاشة الأذونات
+  static const String keyPermissionSetupCompleted =
+      'permission_setup_completed';
+
   // ============================================
   // === أنواع الرسائل (Signaling) ===
   // ============================================
