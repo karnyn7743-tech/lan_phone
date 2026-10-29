@@ -7,16 +7,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../../data/database/database_helper.dart';
 
-/// ============================================================
-/// خدمة الإشعارات المحلية
-/// ------------------------------------------------
-/// تعرض إشعارات للرسائل الجديدة مع احترام
-/// الإعدادات المخصصة لكل جهاز
-/// ============================================================
 class LocalNotificationService {
-  // ============================================
-  // === Singleton ===
-  // ============================================
   LocalNotificationService._internal();
   static final LocalNotificationService instance =
       LocalNotificationService._internal();
@@ -26,37 +17,23 @@ class LocalNotificationService {
 
   bool _initialized = false;
 
-  // ============================================
-  // === Callbacks للتنقل ===
-  // ============================================
   Function(String peerDeviceId, String? messageId)? onMessageTap;
 
-  // ============================================
-  // === Channels ===
-  // ============================================
-  /// قناة الإشعارات الصامتة (رسائل من أجهزة مُسكتة)
   static const String _silentChannelId = 'lanphone_messages_silent';
   static const String _silentChannelName = 'رسائل صامتة';
   static const String _silentChannelDesc = 'رسائل بدون صوت أو اهتزاز';
 
-  /// قناة الإشعارات مع صوت
   static const String _soundChannelId = 'lanphone_messages_sound';
   static const String _soundChannelName = 'رسائل بصوت';
   static const String _soundChannelDesc = 'رسائل مع صوت';
 
-  /// قناة الإشعارات مع اهتزاز
   static const String _vibrateChannelId = 'lanphone_messages_vibrate';
   static const String _vibrateChannelName = 'رسائل بالاهتزاز';
   static const String _vibrateChannelDesc = 'رسائل مع اهتزاز';
 
-  /// قناة الإشعارات الكاملة (صوت + اهتزاز)
   static const String _fullChannelId = 'lanphone_messages_full';
   static const String _fullChannelName = 'رسائل كاملة';
   static const String _fullChannelDesc = 'رسائل مع صوت واهتزاز';
-
-  // ============================================
-  // === التهيئة ===
-  // ============================================
 
   Future<void> init() async {
     if (_initialized) return;
@@ -101,7 +78,6 @@ class LocalNotificationService {
 
     if (androidPlugin == null) return;
 
-    // قناة صامتة
     await androidPlugin.createNotificationChannel(
       const AndroidNotificationChannel(
         _silentChannelId,
@@ -114,7 +90,6 @@ class LocalNotificationService {
       ),
     );
 
-    // قناة الصوت فقط
     await androidPlugin.createNotificationChannel(
       const AndroidNotificationChannel(
         _soundChannelId,
@@ -127,7 +102,6 @@ class LocalNotificationService {
       ),
     );
 
-    // قناة الاهتزاز فقط
     await androidPlugin.createNotificationChannel(
       const AndroidNotificationChannel(
         _vibrateChannelId,
@@ -140,7 +114,6 @@ class LocalNotificationService {
       ),
     );
 
-    // قناة كاملة
     await androidPlugin.createNotificationChannel(
       const AndroidNotificationChannel(
         _fullChannelId,
@@ -154,10 +127,6 @@ class LocalNotificationService {
     );
   }
 
-  // ============================================
-  // === معالجة الضغط على الإشعار ===
-  // ============================================
-
   void _onNotificationResponse(NotificationResponse response) {
     final payload = response.payload;
     if (payload == null || payload.isEmpty) return;
@@ -168,9 +137,7 @@ class LocalNotificationService {
       final messageId = data['messageId'] as String?;
 
       if (peerDeviceId != null) {
-        debugPrint(
-          '[Notifications] Tapped: peer=$peerDeviceId, msg=$messageId',
-        );
+        debugPrint('[Notifications] Tapped: peer=$peerDeviceId, msg=$messageId');
         onMessageTap?.call(peerDeviceId, messageId);
       }
     } catch (e) {
@@ -185,11 +152,6 @@ class LocalNotificationService {
     debugPrint('[Notifications] Background tap: ${response.payload}');
   }
 
-  // ============================================
-  // === عرض إشعار رسالة ===
-  // ============================================
-
-  /// عرض إشعار رسالة جديدة مع احترام إعدادات الجهاز
   Future<void> showMessageNotification({
     required String peerDeviceId,
     required String peerName,
@@ -201,7 +163,6 @@ class LocalNotificationService {
     if (!_initialized) await init();
 
     try {
-      // 1) اجلب إعدادات الجهاز
       final settings =
           await DatabaseHelper.instance.getNotificationSettings(peerDeviceId);
 
@@ -209,23 +170,17 @@ class LocalNotificationService {
       final hasSound = (settings['sound'] as int?) == 1;
       final hasVibration = (settings['vibration'] as int?) == 1;
 
-      // 2) إذا الإشعارات متوقفة → لا شيء
       if (!isEnabled) {
-        debugPrint(
-          '[Notifications] Skipped (disabled): $peerName',
-        );
+        debugPrint('[Notifications] Skipped (disabled): $peerName');
         return;
       }
 
-      // 3) عنوان الإشعار
       final title = peerNumber != null && peerNumber.isNotEmpty
           ? '$peerName • #$peerNumber'
           : peerName;
 
-      // 4) محتوى الإشعار
       final preview = _truncate(body, 100);
 
-      // 5) Payload
       final payload = jsonEncode({
         'peerDeviceId': peerDeviceId,
         'messageId': messageId,
@@ -233,13 +188,11 @@ class LocalNotificationService {
         'type': 'message',
       });
 
-      // 6) اختر القناة المناسبة
       final channel = _selectChannel(
         hasSound: hasSound,
         hasVibration: hasVibration,
       );
 
-      // 7) إعدادات أندرويد
       final androidDetails = AndroidNotificationDetails(
         channel.id,
         channel.name,
@@ -260,7 +213,6 @@ class LocalNotificationService {
         onlyAlertOnce: false,
       );
 
-      // 8) إعدادات iOS
       final iosDetails = DarwinNotificationDetails(
         presentAlert: true,
         presentBadge: true,
@@ -275,7 +227,6 @@ class LocalNotificationService {
         iOS: iosDetails,
       );
 
-      // 9) معرّف الإشعار (نفس لكل رسالة في نفس المحادثة)
       final notificationId = peerDeviceId.hashCode & 0x7FFFFFFF;
 
       await _plugin.show(
@@ -286,18 +237,11 @@ class LocalNotificationService {
         payload: payload,
       );
 
-      debugPrint(
-        '[Notifications] Shown: $peerName '
-        '(sound=$hasSound, vib=$hasVibration)',
-      );
+      debugPrint('[Notifications] Shown: $peerName (sound=$hasSound, vib=$hasVibration)');
     } catch (e) {
       debugPrint('[Notifications] showMessage error: $e');
     }
   }
-
-  // ============================================
-  // === اختيار القناة ===
-  // ============================================
 
   _ChannelInfo _selectChannel({
     required bool hasSound,
@@ -347,15 +291,12 @@ class LocalNotificationService {
         return Priority.high;
       case Importance.max:
         return Priority.max;
-      // ✅ إضافة حالة unspecified التي أضافتها flutter_local_notifications
       case Importance.unspecified:
+      case Importance.none: // ✅ إضافة الحالة الجديدة
+      default:              // ✅ ضمانة لأي حالة مستقبلية
         return Priority.defaultPriority;
     }
   }
-
-  // ============================================
-  // === إلغاء الإشعارات ===
-  // ============================================
 
   Future<void> cancelForDevice(String peerDeviceId) async {
     if (!_initialized) return;
@@ -375,10 +316,6 @@ class LocalNotificationService {
       debugPrint('[Notifications] cancelAll error: $e');
     }
   }
-
-  // ============================================
-  // === طلب الأذونات ===
-  // ============================================
 
   Future<bool> requestPermission() async {
     if (!_initialized) await init();
@@ -412,19 +349,12 @@ class LocalNotificationService {
     }
   }
 
-  // ============================================
-  // === أدوات ===
-  // ============================================
-
   String _truncate(String text, int maxLength) {
     if (text.length <= maxLength) return text;
     return '${text.substring(0, maxLength)}...';
   }
 }
 
-// ============================================================
-// === نموذج معلومات القناة ===
-// ============================================================
 class _ChannelInfo {
   final String id;
   final String name;
