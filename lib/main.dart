@@ -15,7 +15,6 @@ import 'core/providers/theme_provider.dart';
 import 'core/rtc/rtc_service.dart';
 import 'core/services/activation_service.dart';
 import 'core/services/app_lifecycle_service.dart';
-import 'core/services/background_service.dart';
 import 'core/services/broadcast_service.dart';
 import 'core/services/local_notification_service.dart';
 import 'core/services/lock_service.dart';
@@ -29,7 +28,7 @@ import 'ui/screens/audio_call_screen.dart';
 import 'ui/screens/broadcast_screen.dart';
 import 'ui/screens/chat_screen.dart';
 import 'ui/screens/lock_screen.dart';
-import 'ui/screens/permission_setup_screen.dart'; // لا يزال مستورداً لكنه معطل
+import 'ui/screens/permission_setup_screen.dart';
 import 'ui/screens/splash_screen.dart';
 import 'ui/screens/video_call_screen.dart';
 import 'ui/theme/app_theme.dart';
@@ -49,14 +48,6 @@ Future<void> main() async {
     debugPrint('[main] ✅ WebRTC initialized');
   } catch (e) {
     debugPrint('[main] WebRTC init error: $e');
-  }
-
-  // ✅ إعادة تفعيل خدمة الخلفية لاختبارها
-  try {
-    await BackgroundServiceManager.instance.start();
-    debugPrint('[main] ✅ Background service started');
-  } catch (e) {
-    debugPrint('[main] Background service error: $e');
   }
 
   try {
@@ -478,7 +469,7 @@ class _AppGatesState extends State<_AppGates> {
       return const ActivationScreen();
     }
 
-    // ✅ شاشة الأذونات لا تزال معطلة مؤقتاً
+    // ✅ شاشة الأذونات معطلة مؤقتاً
     /*
     if (_setupCompleted == null) {
       return const _LoadingGate();
