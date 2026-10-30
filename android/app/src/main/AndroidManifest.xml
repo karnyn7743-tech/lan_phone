@@ -38,7 +38,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL"
         tools:targetApi="34" />
 
-    <!-- ✅ جديد — مطلوب لخدمة الخلفية من نوع dataSync -->
+    <!-- ✅ مطلوب لخدمة الخلفية من نوع dataSync -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"
         tools:targetApi="34" />
 
@@ -93,13 +93,6 @@
             <data android:scheme="https" />
         </intent>
     </queries>
-
-    <!-- ============================================================ -->
-    <!-- === صلاحية مخصصة للحزمة ===                                  -->
-    <!-- ============================================================ -->
-    <permission
-        android:name="com.lanphone.app.PERMISSION_CALL"
-        android:protectionLevel="normal" />
 
     <!-- ============================================================ -->
     <!-- === التطبيق ===                                              -->
