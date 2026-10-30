@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.fawaz.lanphone"
+    namespace = "com.sinan.lanphone"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "28.2.13676358"
 
@@ -18,7 +18,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.fawaz.lanphone"
+        applicationId = "com.sinan.lanphone"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
