@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui'; // ✅ لتعريف DartPluginRegistrant
+import 'dart:ui'; // لتعريف DartPluginRegistrant
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
@@ -37,10 +37,9 @@ class BackgroundServiceManager {
           initialNotificationTitle: 'LanPhone',
           initialNotificationContent: 'جاهز لاستقبال المكالمات',
           foregroundServiceNotificationId: _notificationId,
-          // ✅ تم حذف بارامتر icon هنا لأنه غير مدعوم في هذا الإصدار
+          // ✅ التعديل الجوهري: استخدام connectedDevice بدلاً من phoneCall
+          // لتجنب انهيار التطبيق على Android 14+
           foregroundServiceTypes: const [
-            AndroidForegroundType.phoneCall,
-            AndroidForegroundType.microphone,
             AndroidForegroundType.connectedDevice,
           ],
         ),
