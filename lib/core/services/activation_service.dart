@@ -122,14 +122,13 @@ class ActivationService extends ChangeNotifier {
         // ✅ المحاولة الأولى: Android ID الحقيقي
         // (16 حرف hex — فريد لكل جهاز، حتى بين نفس الموديل)
         try {
-          final androidId = AndroidId();
           final androidId = await AndroidId().getId();
-          if (id != null &&
-              id.isNotEmpty &&
-              id != 'unknown' &&
-              id != '0') {
-            debugPrint('[Activation] ✅ Real Android ID: $id');
-            return 'ANDROID-$id';
+          if (androidId != null &&
+              androidId.isNotEmpty &&
+              androidId != 'unknown' &&
+              androidId != '0') {
+            debugPrint('[Activation] ✅ Real Android ID: $androidId');
+            return 'ANDROID-$androidId';
           }
         } catch (e) {
           debugPrint('[Activation] android_id package error: $e');
