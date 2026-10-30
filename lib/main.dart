@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // ✅ جديد
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/constants.dart';
 import 'core/discovery/device_discovery.dart';
@@ -29,7 +29,7 @@ import 'ui/screens/audio_call_screen.dart';
 import 'ui/screens/broadcast_screen.dart';
 import 'ui/screens/chat_screen.dart';
 import 'ui/screens/lock_screen.dart';
-import 'ui/screens/permission_setup_screen.dart'; // ✅ جديد
+import 'ui/screens/permission_setup_screen.dart';
 import 'ui/screens/splash_screen.dart';
 import 'ui/screens/video_call_screen.dart';
 import 'ui/theme/app_theme.dart';
@@ -51,13 +51,15 @@ Future<void> main() async {
     debugPrint('[main] WebRTC init error: $e');
   }
 
-  // ✅ بدء خدمة الخلفية المستمرة
+  // ✅ تم تعطيل خدمة الخلفية مؤقتاً للتشخيص
+  /*
   try {
     await BackgroundServiceManager.instance.start();
     debugPrint('[main] ✅ Background service started');
   } catch (e) {
     debugPrint('[main] Background service error: $e');
   }
+  */
 
   try {
     await DatabaseHelper.instance.init();
@@ -228,11 +230,9 @@ class _AppRootState extends State<_AppRoot> {
   void _onRtcEvent(RtcEvent event) {
     switch (event.type) {
       case RtcEventType.incomingCall:
-        // ✅ افتح شاشة المكالمة الواردة فورًا (للمستقبِل)
         _openCallScreen(event);
         break;
       case RtcEventType.callAccepted:
-        // الشاشة مفتوحة بالفعل على المستقبِل — لا تفتحها مرة ثانية
         if (!_callScreenOpen) {
           _openCallScreen(event);
         }
@@ -257,7 +257,6 @@ class _AppRootState extends State<_AppRoot> {
     final nav = navigatorKey.currentState;
     if (nav == null) return;
 
-    // استخراج جهاز المتصل مع دمج بيانات الاسم الصحيحة لمنع بقاء الاسم القديم أو المجهول
     final discovered = _discovery?.getDevice(event.peerDeviceId);
     final peer = discovered ??
         DiscoveredDevice(
@@ -275,7 +274,6 @@ class _AppRootState extends State<_AppRoot> {
 
     _callScreenOpen = true;
 
-    // تمرير حالة هل المستخدم هو البادئ بالمكالمة (isCaller) بدقة
     final bool isCaller = _rtc?.isCaller ?? false;
 
     final Widget screen = event.callType == AppConstants.callTypeVideo
@@ -455,7 +453,6 @@ class _AppRootState extends State<_AppRoot> {
   }
 }
 
-// ✅ تم تحويلها إلى StatefulWidget لإدارة حالة شاشة الأذونات
 class _AppGates extends StatefulWidget {
   final Widget child;
 
@@ -466,19 +463,9 @@ class _AppGates extends StatefulWidget {
 }
 
 class _AppGatesState extends State<_AppGates> {
-  bool? _setupCompleted;
-
   @override
   void initState() {
     super.initState();
-    _checkSetup();
-  }
-
-  Future<void> _checkSetup() async {
-    final prefs = await SharedPreferences.getInstance();
-    final completed =
-        prefs.getBool(AppConstants.keyPermissionSetupCompleted) ?? false;
-    if (mounted) setState(() => _setupCompleted = completed);
   }
 
   @override
@@ -493,12 +480,12 @@ class _AppGatesState extends State<_AppGates> {
       return const ActivationScreen();
     }
 
-    // ✅ انتظار قراءة حالة شاشة الأذونات
+    // ✅ تم تعطيل شاشة الأذونات مؤقتاً
+    /*
     if (_setupCompleted == null) {
       return const _LoadingGate();
     }
 
-    // ✅ عرض شاشة الأذونات مرة واحدة
     if (!_setupCompleted!) {
       return PermissionSetupScreen(
         onComplete: () async {
@@ -511,6 +498,7 @@ class _AppGatesState extends State<_AppGates> {
         },
       );
     }
+    */
 
     final locked = context.select<LockService, bool>((s) => s.isLocked);
     final inCall = context.select<RtcService, bool>((r) => r.isInCall);
