@@ -27,10 +27,13 @@ android {
     }
 
     buildTypes {
-        release {
-            signingConfig = signingConfigs.getByName("debug")
-        }
+    release {
+        signingConfig = signingConfigs.getByName("debug")
+        // ✅ إيقاف الحذف التلقائي للكود لمنع انهيار المكتبات
+        isMinifyEnabled = false
+        isShrinkResources = false
     }
+}
 }
 
 kotlin {
