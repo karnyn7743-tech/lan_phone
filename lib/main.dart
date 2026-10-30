@@ -29,7 +29,7 @@ import 'ui/screens/audio_call_screen.dart';
 import 'ui/screens/broadcast_screen.dart';
 import 'ui/screens/chat_screen.dart';
 import 'ui/screens/lock_screen.dart';
-import 'ui/screens/permission_setup_screen.dart';
+import 'ui/screens/permission_setup_screen.dart'; // لا يزال مستورداً لكنه معطل
 import 'ui/screens/splash_screen.dart';
 import 'ui/screens/video_call_screen.dart';
 import 'ui/theme/app_theme.dart';
@@ -51,15 +51,13 @@ Future<void> main() async {
     debugPrint('[main] WebRTC init error: $e');
   }
 
-  // ✅ تم تعطيل خدمة الخلفية مؤقتاً للتشخيص
-  /*
+  // ✅ إعادة تفعيل خدمة الخلفية لاختبارها
   try {
     await BackgroundServiceManager.instance.start();
     debugPrint('[main] ✅ Background service started');
   } catch (e) {
     debugPrint('[main] Background service error: $e');
   }
-  */
 
   try {
     await DatabaseHelper.instance.init();
@@ -480,7 +478,7 @@ class _AppGatesState extends State<_AppGates> {
       return const ActivationScreen();
     }
 
-    // ✅ تم تعطيل شاشة الأذونات مؤقتاً
+    // ✅ شاشة الأذونات لا تزال معطلة مؤقتاً
     /*
     if (_setupCompleted == null) {
       return const _LoadingGate();
