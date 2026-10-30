@@ -15,7 +15,6 @@ import 'core/providers/theme_provider.dart';
 import 'core/rtc/rtc_service.dart';
 import 'core/services/activation_service.dart';
 import 'core/services/app_lifecycle_service.dart';
-import 'core/services/background_service.dart';
 import 'core/services/broadcast_service.dart';
 import 'core/services/local_notification_service.dart';
 import 'core/services/lock_service.dart';
@@ -29,7 +28,7 @@ import 'ui/screens/audio_call_screen.dart';
 import 'ui/screens/broadcast_screen.dart';
 import 'ui/screens/chat_screen.dart';
 import 'ui/screens/lock_screen.dart';
-import 'ui/screens/permission_setup_screen.dart'; // لا يزال مستورداً لكنه معطل
+import 'ui/screens/permission_setup_screen.dart';
 import 'ui/screens/splash_screen.dart';
 import 'ui/screens/video_call_screen.dart';
 import 'ui/theme/app_theme.dart';
@@ -51,13 +50,7 @@ Future<void> main() async {
     debugPrint('[main] WebRTC init error: $e');
   }
 
-  // ✅ إعادة تفعيل خدمة الخلفية لاختبارها
-  try {
-    await BackgroundServiceManager.instance.start();
-    debugPrint('[main] ✅ Background service started');
-  } catch (e) {
-    debugPrint('[main] Background service error: $e');
-  }
+  // ✅ تم حذف خدمة الخلفية نهائياً لحل مشكلة الانهيار
 
   try {
     await DatabaseHelper.instance.init();
@@ -461,9 +454,19 @@ class _AppGates extends StatefulWidget {
 }
 
 class _AppGatesState extends State<_AppGates> {
+  bool? _setupCompleted;
+
   @override
   void initState() {
     super.initState();
+    _checkSetup();
+  }
+
+  Future<void> _checkSetup() async {
+    final prefs = await SharedPreferences.getInstance();
+    final completed =
+        prefs.getBool(AppConstants.keyPermissionSetupCompleted) ?? false;
+    if (mounted) setState(() => _setupCompleted = completed);
   }
 
   @override
@@ -478,8 +481,6 @@ class _AppGatesState extends State<_AppGates> {
       return const ActivationScreen();
     }
 
-    // ✅ شاشة الأذونات لا تزال معطلة مؤقتاً
-    /*
     if (_setupCompleted == null) {
       return const _LoadingGate();
     }
@@ -496,7 +497,6 @@ class _AppGatesState extends State<_AppGates> {
         },
       );
     }
-    */
 
     final locked = context.select<LockService, bool>((s) => s.isLocked);
     final inCall = context.select<RtcService, bool>((r) => r.isInCall);
