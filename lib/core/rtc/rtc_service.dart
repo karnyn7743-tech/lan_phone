@@ -116,11 +116,7 @@ class RtcService extends ChangeNotifier {
   // === إعدادات ICE ===
   // ============================================
   final Map<String, dynamic> _iceServers = const {
-      final Map<String, dynamic> _iceServers = const {
     'iceServers': >[],
-    'sdpSemantics': 'unified-plan',
-  };
-
     'sdpSemantics': 'unified-plan',
   };
 
@@ -797,23 +793,20 @@ class RtcService extends ChangeNotifier {
       }
     };
 
-    // ✅ التعديل: مستمع ذكي لحالة ICE لتفادي انهيار المكالمات عند التذبذب
+    // مستمع ذكي لحالة ICE لتفادي انهيار المكالمات عند التذبذب
     _pc!.onIceConnectionState = (state) {
       debugPrint('[RTC] 🌐 ICE connection state: $state');
       switch (state) {
         case RTCIceConnectionState.RTCIceConnectionStateConnected:
         case RTCIceConnectionState.RTCIceConnectionStateCompleted:
-          // إلغاء مؤقت المهلة عند استعادة الاتصال
           _disconnectRecoveryTimer?.cancel();
           _disconnectRecoveryTimer = null;
           break;
 
         case RTCIceConnectionState.RTCIceConnectionStateDisconnected:
           debugPrint('[RTC] ⚠️ Connection dropped temporarily. Attempting ICE restart...');
-          // محاولة إنعاش الجلسة بدلاً من الإنهاء الفوري
           _restartIceSession();
           
-          // مهلة 6 ثوانٍ لاستعادة المسار قبل إسقاط المكالمة
           _disconnectRecoveryTimer?.cancel();
           _disconnectRecoveryTimer = Timer(const Duration(seconds: 6), () {
             if (_pc != null && isInCall) {
@@ -857,7 +850,7 @@ class RtcService extends ChangeNotifier {
     };
   }
 
-  /// ✅ محاولة إعادة تفاوض الـ ICE عند تذبذب الشبكة
+  /// محاولة إعادة تفاوض الـ ICE عند تذبذب الشبكة
   Future<void> _restartIceSession() async {
     if (_pc == null || !isInCall) return;
 
@@ -959,7 +952,7 @@ class RtcService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> switchCamera() async {
+  Future<switchCamera> switchCamera() async {
     if (_localStream == null) return;
     final videoTracks = _localStream!.getVideoTracks();
     if (videoTracks.isEmpty) return;
