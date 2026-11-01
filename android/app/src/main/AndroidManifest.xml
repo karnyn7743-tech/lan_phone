@@ -2,19 +2,22 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ============================================================ -->
-    <!-- === الأذونات ===                                              -->
+    <!-- === أذونات الشبكة وقفل الـ Wi-Fi ===                         -->
     <!-- ============================================================ -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="tiramisu" />
 
-    <!-- المكالمات -->
+    <!-- ============================================================ -->
+    <!-- === المكالمات والوسائط والصوت ===                            -->
+    <!-- ============================================================ -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -23,11 +26,17 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"
         tools:targetApi="s" />
 
-    <!-- الخلفية والمكالمات -->
+    <!-- ============================================================ -->
+    <!-- === إبقاء الاتصال حياً في الخلفية وقفل الشاشة ===             -->
+    <!-- ============================================================ -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- أذونات الخدمات الأمامية (Foreground Services) لـ Android 10 إلى 14+ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"
         tools:targetApi="q" />
@@ -37,27 +46,28 @@
         tools:targetApi="q" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL"
         tools:targetApi="34" />
-
-    <!-- ✅ مطلوب لخدمة الخلفية من نوع dataSync -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"
         tools:targetApi="34" />
 
-    <!-- البطارية -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-
-    <!-- البصمة -->
+    <!-- ============================================================ -->
+    <!-- === أذونات الأمان والبيومترك ===                             -->
+    <!-- ============================================================ -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT"
         tools:targetApi="p" />
 
-    <!-- الإشعارات -->
+    <!-- ============================================================ -->
+    <!-- === الإشعارات والتشغيل التلقائي ===                          -->
+    <!-- ============================================================ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"
         tools:targetApi="tiramisu" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
-    <!-- الوسائط -->
+    <!-- ============================================================ -->
+    <!-- === إدارة تخزين الوسائط والملفات ===                         -->
+    <!-- ============================================================ -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"
         tools:targetApi="tiramisu" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"
@@ -81,7 +91,7 @@
     <uses-feature android:name="android.hardware.fingerprint" android:required="false" />
 
     <!-- ============================================================ -->
-    <!-- === Queries (Android 11+) ===                                -->
+    <!-- === الاستعلامات Queries (Android 11+) ===                     -->
     <!-- ============================================================ -->
     <queries>
         <intent><action android:name="android.media.action.IMAGE_CAPTURE" /></intent>
@@ -141,12 +151,7 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- ============================================================ -->
-        <!-- ⚠️ مهم: لا نُعلن عن مكونات flutter_callkit_incoming هنا       -->
-        <!-- لأن الحزمة تتولى ذلك تلقائيًا. أي إعلان مكرر → تعارض.       -->
-        <!-- ============================================================ -->
-
-        <!-- === مستقبلات الإشعارات المحلية فقط === -->
+        <!-- === مستقبلات الإشعارات المحلية والتشغيل التلقائي === -->
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
             android:exported="false" />
