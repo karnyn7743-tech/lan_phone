@@ -15,7 +15,6 @@ import 'core/providers/theme_provider.dart';
 import 'core/rtc/rtc_service.dart';
 import 'core/services/activation_service.dart';
 import 'core/services/app_lifecycle_service.dart';
-import 'core/services/background_service.dart';
 import 'core/services/broadcast_service.dart';
 import 'core/services/local_notification_service.dart';
 import 'core/services/lock_service.dart';
@@ -29,7 +28,7 @@ import 'ui/screens/audio_call_screen.dart';
 import 'ui/screens/broadcast_screen.dart';
 import 'ui/screens/chat_screen.dart';
 import 'ui/screens/lock_screen.dart';
-import 'ui/screens/permission_setup_screen.dart'; // لا يزال مستورداً لكنه معطل
+import 'ui/screens/permission_setup_screen.dart';
 import 'ui/screens/splash_screen.dart';
 import 'ui/screens/video_call_screen.dart';
 import 'ui/theme/app_theme.dart';
@@ -51,7 +50,7 @@ Future<void> main() async {
     debugPrint('[main] WebRTC init error: $e');
   }
 
-  // لا تبدأ خدمات الشبكة أو الخلفية قبل ظهور واجهة التطبيق والتحقق من التنشيط.
+  // ✅ تم حذف خدمة الخلفية نهائياً لحل مشكلة الانهيار
 
   try {
     await DatabaseHelper.instance.init();
@@ -64,6 +63,12 @@ Future<void> main() async {
     debugPrint('[main] Local notifications initialized');
   } catch (e) {
     debugPrint('[main] Local notifications init error: $e');
+  }
+
+  try {
+    await PermissionService.requestEssentialAtStartup();
+  } catch (e) {
+    debugPrint('[main] Permission request error: $e');
   }
 
   runApp(const LanPhoneApp());
@@ -95,14 +100,12 @@ class LanPhoneApp extends StatelessWidget {
           create: (_) => NotificationService(),
         ),
         ChangeNotifierProvider<DeviceDiscovery>(
-          // يبدأ الاكتشاف بعد نجاح التنشيط، وليس أثناء إنشاء Provider.
-          create: (_) => DeviceDiscovery(),
+          create: (_) => DeviceDiscovery()..start(),
         ),
         ChangeNotifierProxyProvider<DeviceDiscovery, SignalingService>(
-          // يُنشأ الخادم هنا دون فتح منفذ الشبكة قبل التنشيط.
-          create: (_) => SignalingService(),
+          create: (_) => SignalingService()..start(),
           update: (_, discovery, signaling) {
-            final service = signaling ?? SignalingService();
+            final service = signaling ?? SignalingService()..start();
             service.attachDiscovery(discovery);
             return service;
           },
@@ -451,69 +454,24 @@ class _AppGates extends StatefulWidget {
 }
 
 class _AppGatesState extends State<_AppGates> {
-  bool _activatedServicesStarted = false;
-  bool _activatedServicesStartScheduled = false;
+  bool? _setupCompleted;
 
   @override
   void initState() {
     super.initState();
+    _checkSetup();
   }
 
-  void _scheduleActivatedServicesStart() {
-    if (_activatedServicesStarted || _activatedServicesStartScheduled) return;
-
-    _activatedServicesStartScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _activatedServicesStarted) return;
-      _startActivatedServices();
-    });
-  }
-
-  Future<void> _startActivatedServices() async {
-    if (!mounted || _activatedServicesStarted) return;
-    // تثبيت العلامة قبل أول await لمنع بدء الخدمات أكثر من مرة.
-    _activatedServicesStarted = true;
-
-    final discovery = context.read<DeviceDiscovery>();
-    final signaling = context.read<SignalingService>();
-
-    // 1) اكتشاف الأجهزة: يطلب أذونات الشبكة/الموقع عند الحاجة بعد التنشيط.
-    try {
-      await discovery.start();
-    } catch (e) {
-      debugPrint('[main] Discovery start error: $e');
-    }
-
-    // 2) تشغيل خادم الإشارات بعد تهيئة خدمة الاكتشاف.
-    try {
-      await signaling.start();
-    } catch (e) {
-      debugPrint('[main] Signaling start error: $e');
-    }
-
-    // 3) طلب إذن الإشعارات بعد ظهور التطبيق واجتياز شاشة التنشيط.
-    try {
-      await PermissionService.requestNotifications();
-    } catch (e) {
-      debugPrint('[main] Notification permission error: $e');
-    }
-
-    // 4) تشغيل خدمة الخلفية أخيرًا بعد تهيئة خدمات التطبيق الأساسية.
-    try {
-      await BackgroundServiceManager.instance.start();
-      debugPrint('[main] Background service start requested');
-    } catch (e) {
-      debugPrint('[main] Background service error: $e');
-    }
+  Future<void> _checkSetup() async {
+    final prefs = await SharedPreferences.getInstance();
+    final completed =
+        prefs.getBool(AppConstants.keyPermissionSetupCompleted) ?? false;
+    if (mounted) setState(() => _setupCompleted = completed);
   }
 
   @override
   Widget build(BuildContext context) {
     final activation = context.watch<ActivationService>();
-
-    if (activation.activated) {
-      _scheduleActivatedServicesStart();
-    }
 
     if (activation.checking) {
       return const _LoadingGate();
@@ -523,8 +481,6 @@ class _AppGatesState extends State<_AppGates> {
       return const ActivationScreen();
     }
 
-    // ✅ شاشة الأذونات لا تزال معطلة مؤقتاً
-    /*
     if (_setupCompleted == null) {
       return const _LoadingGate();
     }
@@ -541,7 +497,6 @@ class _AppGatesState extends State<_AppGates> {
         },
       );
     }
-    */
 
     final locked = context.select<LockService, bool>((s) => s.isLocked);
     final inCall = context.select<RtcService, bool>((r) => r.isInCall);
