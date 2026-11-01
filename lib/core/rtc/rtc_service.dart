@@ -116,7 +116,7 @@ class RtcService extends ChangeNotifier {
   // === إعدادات ICE ===
   // ============================================
   final Map<String, dynamic> _iceServers = const {
-    'iceServers': >[],
+    'iceServers': [],
     'sdpSemantics': 'unified-plan',
   };
 
