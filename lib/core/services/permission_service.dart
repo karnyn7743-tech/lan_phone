@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart'
 /// ============================================================
 /// خدمة إدارة الأذونات
 /// تتعامل مع الفروق بين إصدارات Android وتطلب الأذونات بذكاء
+/// مع دعم فحص وإلغاء قيود توفير البطارية (Doze Mode)
 /// ============================================================
 class PermissionService {
   PermissionService._();
@@ -15,11 +16,7 @@ class PermissionService {
   // === الأذونات المطلوبة حسب المجموعة ===
   // ============================================
 
-  /// اكتشاف الأجهزة عبر UDP وMulticast لا يحتاج إلى إذن تشغيل للموقع
-  /// أو NEARBY_WIFI_DEVICES؛ إذن CHANGE_WIFI_MULTICAST_STATE معلن
-  /// في AndroidManifest.xml وهو إذن عادي لا يظهر للمستخدم كطلب runtime.
-  /// لذلك لا نجعل اكتشاف الشبكة متوقفًا على إذن غير مطلوب لهذه الواجهات.
-  /// على iOS فقط نحتفظ بإذن الموقع كما كان مطلوبًا في التصميم الأصلي.
+  /// اكتشاف الأجهزة عبر UDP وMulticast
   static List<ph.Permission> get _discoveryPermissions {
     if (Platform.isIOS) {
       return <ph.Permission>[ph.Permission.locationWhenInUse];
@@ -42,7 +39,6 @@ class PermissionService {
 
   /// أذونات الوسائط والملفات
   static List<ph.Permission> get _mediaPermissions {
-    // Android 13+ يستخدم أذونات منفصلة للصور/الفيديو/الصوت
     if (Platform.isAndroid) {
       return [
         ph.Permission.photos,
@@ -58,6 +54,35 @@ class PermissionService {
   static List<ph.Permission> get _notificationPermissions => [
         ph.Permission.notification,
       ];
+
+  // ============================================
+  // === إدارة قيود تحسين البطارية (Doze Mode) ===
+  // ============================================
+
+  /// فحص هل التطبيق مستثنى من قيود تحسين البطارية
+  static Future<bool> isBatteryOptimizationIgnored() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final status = await ph.Permission.ignoreBatteryOptimizations.status;
+      return status.isGranted;
+    } catch (e) {
+      debugPrint('[Permissions] isBatteryOptimizationIgnored error: $e');
+      return false;
+    }
+  }
+
+  /// طلب استثناء التطبيق من تحسين البطارية لضمان بقاء المقابس والاتصالات حية
+  static Future<bool> requestIgnoreBatteryOptimizations() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final status = await ph.Permission.ignoreBatteryOptimizations.request();
+      debugPrint('[Permissions] Battery optimization status: $status');
+      return status.isGranted;
+    } catch (e) {
+      debugPrint('[Permissions] requestIgnoreBatteryOptimizations error: $e');
+      return false;
+    }
+  }
 
   // ============================================
   // === الطلب الأساسي ===
@@ -105,8 +130,7 @@ class PermissionService {
   // === طلبات جاهزة (High-Level) ===
   // ============================================
 
-  /// فحص/طلب أذونات الاكتشاف عند الحاجة. على Android لا يوجد طلب runtime
-  /// مطلوب لفتح UDP أو استخدام Multicast lock.
+  /// فحص/طلب أذونات الاكتشاف
   static Future<bool> requestDiscovery() async {
     return requestAll(_discoveryPermissions);
   }
@@ -131,14 +155,21 @@ class PermissionService {
     return requestAll(_notificationPermissions);
   }
 
-  /// طلب الأذونات الأساسية عند أول تشغيل
+  /// طلب الأذونات الأساسية عند أول تشغيل (بما في ذلك فحص قيود البطارية)
   static Future<PermissionSummary> requestEssentialAtStartup() async {
     final discoveryOk = await requestDiscovery();
     final notificationsOk = await requestNotifications();
+    
+    // طلب استثناء توفير البطارية لضمان عدم إيقاف استقبال الاتصالات
+    bool batteryIgnored = await isBatteryOptimizationIgnored();
+    if (!batteryIgnored) {
+      batteryIgnored = await requestIgnoreBatteryOptimizations();
+    }
 
     return PermissionSummary(
       discoveryGranted: discoveryOk,
       notificationsGranted: notificationsOk,
+      batteryOptimizationIgnored: batteryIgnored,
       audioCallGranted: false,
       videoCallGranted: false,
       mediaGranted: false,
@@ -183,7 +214,6 @@ class PermissionService {
   }
 
   /// فتح إعدادات التطبيق (لتفعيل الأذونات المرفوضة نهائيًا)
-  /// ✅ الآن تعمل بشكل صحيح — تستدعي دالة permission_handler الأصلية
   static Future<bool> openAppSettings() async {
     try {
       return await ph.openAppSettings();
@@ -197,28 +227,23 @@ class PermissionService {
   // === طلب ذكي مع إرشاد المستخدم ===
   // ============================================
 
-  /// طلب أذونات مع نتيجة واضحة (للعرض في واجهة)
   static Future<PermissionResult> requestWithGuidance(
     List<ph.Permission> permissions,
     String reason,
   ) async {
-    // 1) هل مُمنوحة أصلًا؟
     if (await checkAll(permissions)) {
       return PermissionResult.alreadyGranted();
     }
 
-    // 2) هل مرفوضة نهائيًا؟
     if (await isPermanentlyDenied(permissions)) {
       return PermissionResult.permanentlyDenied();
     }
 
-    // 3) اطلبها
     final granted = await requestAll(permissions);
     if (granted) {
       return PermissionResult.granted();
     }
 
-    // 4) رُفضت للتو
     if (await isPermanentlyDenied(permissions)) {
       return PermissionResult.permanentlyDenied();
     }
@@ -234,6 +259,7 @@ class PermissionService {
 class PermissionSummary {
   final bool discoveryGranted;
   final bool notificationsGranted;
+  final bool batteryOptimizationIgnored;
   final bool audioCallGranted;
   final bool videoCallGranted;
   final bool mediaGranted;
@@ -241,12 +267,13 @@ class PermissionSummary {
   const PermissionSummary({
     required this.discoveryGranted,
     required this.notificationsGranted,
+    required this.batteryOptimizationIgnored,
     required this.audioCallGranted,
     required this.videoCallGranted,
     required this.mediaGranted,
   });
 
-  bool get isEssentialOk => discoveryGranted;
+  bool get isEssentialOk => discoveryGranted && notificationsGranted;
 }
 
 enum PermissionResultStatus {
