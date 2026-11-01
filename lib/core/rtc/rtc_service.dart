@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';                                       // ✅ جديد
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
@@ -13,6 +13,7 @@ import '../signaling/signaling_service.dart';
 
 /// ============================================================
 /// محرك WebRTC مع تسجيل المكالمات ودعم Callkit
+/// وإعادة التفاوض التلقائي لحالة الاتصال (ICE Auto-Recovery)
 /// ============================================================
 class RtcService extends ChangeNotifier {
   RtcService();
@@ -67,12 +68,13 @@ class RtcService extends ChangeNotifier {
 
   DateTime? _callLogStartTime;
 
-  // ✅ تخزين SDP offer الوارد (للمستقبِل)
   String? _pendingOfferSdp;
   String? _pendingOfferType;
 
-  // ✅ IP المحلي (يُستخدم لاستبدال mDNS في SDP)
   String _localIp = '';
+
+  // مؤقت للتعافي عند حدوث Disconnect قبل القطع النهائي
+  Timer? _disconnectRecoveryTimer;
 
   int get callDurationSeconds {
     if (_callStartedAt == null) return 0;
@@ -114,11 +116,10 @@ class RtcService extends ChangeNotifier {
   // === إعدادات ICE ===
   // ============================================
   final Map<String, dynamic> _iceServers = const {
-    'iceServers': <Map<String, dynamic>>[],
+    'iceServers': >[],
     'sdpSemantics': 'unified-plan',
   };
 
-  // ✅ قيود صوت بمعايير WebRTC الحديثة
   static const Map<String, dynamic> _audioConstraints = {
     'audio': {
       'echoCancellation': true,
@@ -130,7 +131,6 @@ class RtcService extends ChangeNotifier {
     },
   };
 
-  // ✅ قيود فيديو بالصيغة الحديثة
   static const Map<String, dynamic> _videoConstraints = {
     'video': {
       'facingMode': 'user',
@@ -148,7 +148,7 @@ class RtcService extends ChangeNotifier {
   Stream<RtcEvent> get events => _eventController.stream;
 
   // ============================================
-  // === ✅ (جديد) استخراج IP المحلي ===
+  // === استخراج IP المحلي ===
   // ============================================
 
   Future<String> _detectLocalIp() async {
@@ -160,7 +160,6 @@ class RtcService extends ChangeNotifier {
         includeLoopback: false,
       );
 
-      // أولوية: واجهات WiFi
       for (final iface in interfaces) {
         final name = iface.name.toLowerCase();
         if (name.contains('wlan') ||
@@ -177,7 +176,6 @@ class RtcService extends ChangeNotifier {
         }
       }
 
-      // احتياطي: أي واجهة خاصة
       for (final iface in interfaces) {
         for (final addr in iface.addresses) {
           if (_isPrivateIp(addr.address)) {
@@ -208,15 +206,8 @@ class RtcService extends ChangeNotifier {
   }
 
   // ============================================
-  // === ✅ (جديد) إصلاح SDP — استبدال mDNS بـ IP ===
+  // === إصلاح SDP واستبدال mDNS بـ IP ===
   // ============================================
-  //
-  // WebRTC على Android يستبدل عنوان IP المحلي في SDP بـ
-  // مضيف mDNS عشوائي ينتهي بـ `.local` لأسباب أمنية.
-  // لكن الطرف الآخر لا يستطيع حلّ `.local` بدون mDNS
-  // → الاتصال يفشل → لا صوت ولا فيديو.
-  //
-  // الحل: نستبدل كل `<uuid>.local` بـ IP الحقيقي قبل الإرسال.
 
   String _fixSdp(String sdp) {
     if (_localIp.isEmpty) {
@@ -224,24 +215,12 @@ class RtcService extends ChangeNotifier {
       return sdp;
     }
 
-    // نمط WebRTC mDNS في ICE candidates:
-    // a=candidate:... <uuid>.local <port> typ host ...
-    // أو: a=candidate:... <mdns-id>.local <port> typ host ...
     final fixed = sdp.replaceAllMapped(
       RegExp(
         r'([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32,})\.local',
       ),
-      (m) {
-        debugPrint('[RTC] 🔄 Replacing mDNS: ${m.group(0)} → $_localIp');
-        return _localIp;
-      },
+      (m) => _localIp,
     );
-
-    if (fixed != sdp) {
-      debugPrint('[RTC] ✅ SDP fixed: mDNS → $_localIp');
-    } else {
-      debugPrint('[RTC] ℹ️ SDP unchanged (no mDNS found)');
-    }
 
     return fixed;
   }
@@ -289,15 +268,12 @@ class RtcService extends ChangeNotifier {
     await _logCallStart(direction: AppConstants.callDirectionOutgoing);
 
     try {
-      // ✅ احصل على IP المحلي أولًا
       await _detectLocalIp();
 
       await _openLocalMedia(callType);
       await _createPeerConnection();
 
-      // ✅ فعّل جلسة الصوت لـ WebRTC بعد أن يحررها Callkit
       await _activateAudioSessionForWebRTC();
-
       await _addLocalTracks();
 
       final offer = await _pc!.createOffer({
@@ -306,7 +282,6 @@ class RtcService extends ChangeNotifier {
       });
       await _pc!.setLocalDescription(offer);
 
-      // ✅ إصلاح SDP قبل الإرسال
       final fixedSdp = _fixSdp(offer.sdp ?? '');
 
       await _signaling!.sendTo(peerDeviceId, {
@@ -371,11 +346,6 @@ class RtcService extends ChangeNotifier {
     _pendingOfferSdp = msg.payload['sdp'] as String?;
     _pendingOfferType = msg.payload['sdpType'] as String? ?? 'offer';
 
-    debugPrint(
-      '[RTC] 📥 Incoming call — SDP: '
-      '${_pendingOfferSdp != null ? "YES (${_pendingOfferSdp!.length} chars)" : "NO"}',
-    );
-
     notifyListeners();
 
     await _logCallStart(direction: AppConstants.callDirectionIncoming);
@@ -391,7 +361,7 @@ class RtcService extends ChangeNotifier {
   }
 
   // ============================================
-  // === Callkit UI ===
+  // === Callkit UI & Events ===
   // ============================================
 
   Future<void> _showCallkitIncoming() async {
@@ -453,15 +423,9 @@ class RtcService extends ChangeNotifier {
     }
   }
 
-  // ============================================
-  // === أحداث Callkit ===
-  // ============================================
-
   Future<void> _onCallkitEvent(CallEvent? event) async {
     if (event == null) return;
-
     final eventStr = event.toString();
-    debugPrint('[RTC] Callkit event: $eventStr');
 
     if (eventStr.contains('actionCallAccept')) {
       await _onCallkitAccept(event);
@@ -508,7 +472,7 @@ class RtcService extends ChangeNotifier {
   }
 
   // ============================================
-  // === قبول المكالمة (مع SDP) ===
+  // === قبول المكالمة ===
   // ============================================
 
   Future<bool> acceptCall() async {
@@ -523,24 +487,18 @@ class RtcService extends ChangeNotifier {
       _callState = AppConstants.callStateConnecting;
       notifyListeners();
 
-      // ✅ احصل على IP المحلي أولًا
       await _detectLocalIp();
 
       await _openLocalMedia(_callType);
       await _createPeerConnection();
 
-      // ✅ فعّل جلسة الصوت لـ WebRTC
       await _activateAudioSessionForWebRTC();
-
-      // ✅ أضف المسارات المحلية قبل setRemoteDescription
       await _addLocalTracks();
 
-      // اضبط الوصف البعيد
       await _pc!.setRemoteDescription(
         RTCSessionDescription(_pendingOfferSdp!, _pendingOfferType!),
       );
       _remoteDescriptionSet = true;
-      debugPrint('[RTC] ✅ Remote description set from offer');
 
       await _drainPendingCandidates();
 
@@ -550,7 +508,6 @@ class RtcService extends ChangeNotifier {
       });
       await _pc!.setLocalDescription(answer);
 
-      // ✅ إصلاح SDP قبل الإرسال
       final fixedAnswer = _fixSdp(answer.sdp ?? '');
 
       await _signaling!.sendTo(_peerDeviceId, {
@@ -637,13 +594,10 @@ class RtcService extends ChangeNotifier {
           RTCSessionDescription(sdp, sdpType),
         );
         _remoteDescriptionSet = true;
-        debugPrint('[RTC] ✅ Remote description set from answer');
         await _drainPendingCandidates();
       } catch (e) {
         debugPrint('[RTC] setRemoteDescription(answer) error: $e');
       }
-    } else {
-      debugPrint('[RTC] ⚠️ Accept received without SDP');
     }
   }
 
@@ -732,7 +686,6 @@ class RtcService extends ChangeNotifier {
       });
       await _pc!.setLocalDescription(answer);
 
-      // ✅ إصلاح SDP قبل الإرسال
       final fixedAnswer = _fixSdp(answer.sdp ?? '');
 
       await _signaling!.sendTo(_peerDeviceId, {
@@ -773,13 +726,11 @@ class RtcService extends ChangeNotifier {
 
     if (_pc == null || !_remoteDescriptionSet) {
       _pendingCandidates.add(candidate);
-      debugPrint('[RTC] ICE queued (no remote desc yet)');
       return;
     }
 
     try {
       await _pc!.addCandidate(candidate);
-      debugPrint('[RTC] ICE added');
     } catch (e) {
       debugPrint('[RTC] addCandidate error: $e');
     }
@@ -787,7 +738,6 @@ class RtcService extends ChangeNotifier {
 
   Future<void> _drainPendingCandidates() async {
     if (_pc == null) return;
-    debugPrint('[RTC] Draining ${_pendingCandidates.length} ICE candidates');
     for (final c in _pendingCandidates) {
       try {
         await _pc!.addCandidate(c);
@@ -797,7 +747,7 @@ class RtcService extends ChangeNotifier {
   }
 
   // ============================================
-  // === RTCPeerConnection ===
+  // === RTCPeerConnection مع مستمع ICE الذكي ===
   // ============================================
 
   Future<void> _createPeerConnection() async {
@@ -806,7 +756,6 @@ class RtcService extends ChangeNotifier {
     _pc!.onIceCandidate = (candidate) async {
       if (candidate.candidate == null) return;
 
-      // ✅ إصلاح ICE candidate: استبدال .local بـ IP
       final fixedCandidate = _localIp.isNotEmpty
           ? candidate.candidate!.replaceAllMapped(
               RegExp(
@@ -844,10 +793,41 @@ class RtcService extends ChangeNotifier {
       }
     };
 
+    // ✅ التعديل: مستمع ذكي لحالة ICE لتفادي انهيار المكالمات عند التذبذب
     _pc!.onIceConnectionState = (state) {
-      debugPrint('[RTC] ICE state: $state');
-      if (state == RTCIceConnectionState.RTCIceConnectionStateFailed) {
-        endCall(reason: 'ice-failed');
+      debugPrint('[RTC] 🌐 ICE connection state: $state');
+      switch (state) {
+        case RTCIceConnectionState.RTCIceConnectionStateConnected:
+        case RTCIceConnectionState.RTCIceConnectionStateCompleted:
+          // إلغاء مؤقت المهلة عند استعادة الاتصال
+          _disconnectRecoveryTimer?.cancel();
+          _disconnectRecoveryTimer = null;
+          break;
+
+        case RTCIceConnectionState.RTCIceConnectionStateDisconnected:
+          debugPrint('[RTC] ⚠️ Connection dropped temporarily. Attempting ICE restart...');
+          // محاولة إنعاش الجلسة بدلاً من الإنهاء الفوري
+          _restartIceSession();
+          
+          // مهلة 6 ثوانٍ لاستعادة المسار قبل إسقاط المكالمة
+          _disconnectRecoveryTimer?.cancel();
+          _disconnectRecoveryTimer = Timer(const Duration(seconds: 6), () {
+            if (_pc != null && isInCall) {
+              debugPrint('[RTC] ❌ ICE recovery timeout. Ending call.');
+              endCall(reason: 'ice-timeout');
+            }
+          });
+          break;
+
+        case RTCIceConnectionState.RTCIceConnectionStateFailed:
+          debugPrint('[RTC] ❌ ICE connection failed completely.');
+          _disconnectRecoveryTimer?.cancel();
+          _disconnectRecoveryTimer = null;
+          endCall(reason: 'ice-failed');
+          break;
+
+        default:
+          break;
       }
     };
 
@@ -855,20 +835,49 @@ class RtcService extends ChangeNotifier {
       debugPrint('[RTC] Connection state: $state');
       switch (state) {
         case RTCPeerConnectionState.RTCPeerConnectionStateConnected:
+          _disconnectRecoveryTimer?.cancel();
           _callState = AppConstants.callStateConnected;
           _callStartedAt ??= DateTime.now();
           _updateCallLogState(AppConstants.callStateConnected);
           notifyListeners();
           break;
-        case RTCPeerConnectionState.RTCPeerConnectionStateDisconnected:
+
         case RTCPeerConnectionState.RTCPeerConnectionStateFailed:
         case RTCPeerConnectionState.RTCPeerConnectionStateClosed:
           if (isInCall) endCall(reason: 'disconnected');
           break;
+
         default:
           break;
       }
     };
+  }
+
+  /// ✅ محاولة إعادة تفاوض الـ ICE عند تذبذب الشبكة
+  Future<void> _restartIceSession() async {
+    if (_pc == null || !isInCall) return;
+
+    try {
+      if (_isCaller) {
+        final offer = await _pc!.createOffer({
+          'iceRestart': true,
+          'offerToReceiveAudio': true,
+          'offerToReceiveVideo': _callType == AppConstants.callTypeVideo,
+        });
+        await _pc!.setLocalDescription(offer);
+
+        final fixedSdp = _fixSdp(offer.sdp ?? '');
+        await _signaling?.sendTo(_peerDeviceId, {
+          'type': AppConstants.msgSdpOffer,
+          'callId': _currentCallId,
+          'sdp': fixedSdp,
+          'sdpType': offer.type,
+        });
+        debugPrint('[RTC] 🔄 ICE restart offer sent to peer');
+      }
+    } catch (e) {
+      debugPrint('[RTC] restartIce error: $e');
+    }
   }
 
   // ============================================
@@ -887,12 +896,6 @@ class RtcService extends ChangeNotifier {
     }
 
     _localStream = await navigator.mediaDevices.getUserMedia(constraints);
-    debugPrint(
-      '[RTC] Local stream: ${_localStream!.getTracks().length} tracks '
-      '(audio: ${_localStream!.getAudioTracks().length}, '
-      'video: ${_localStream!.getVideoTracks().length})',
-    );
-
     if (callType != AppConstants.callTypeVideo) {
       _isVideoEnabled = false;
     }
@@ -902,11 +905,9 @@ class RtcService extends ChangeNotifier {
     if (_localStream == null || _pc == null) return;
     for (final track in _localStream!.getTracks()) {
       await _pc!.addTrack(track, _localStream!);
-      debugPrint('[RTC] Added track: ${track.kind}');
     }
   }
 
-  /// ✅ تكتيك لتحرير جلسة الصوت من Callkit وتمريرها لـ WebRTC
   Future<void> _activateAudioSessionForWebRTC() async {
     try {
       await Helper.setSpeakerphoneOn(true);
@@ -981,10 +982,13 @@ class RtcService extends ChangeNotifier {
   Future<void> endCall({String reason = 'user-hangup'}) async {
     if (!isInCall) return;
 
+    _disconnectRecoveryTimer?.cancel();
+    _disconnectRecoveryTimer = null;
+
     String finalState;
     if (_callStartedAt != null) {
       finalState = AppConstants.callStateEnded;
-    } else if (reason == 'disconnected' || reason == 'ice-failed') {
+    } else if (reason == 'disconnected' || reason == 'ice-failed' || reason == 'ice-timeout') {
       finalState = AppConstants.callStateDeclined;
     } else {
       finalState = AppConstants.callStateMissed;
@@ -1072,10 +1076,13 @@ class RtcService extends ChangeNotifier {
   }
 
   // ============================================
-  // === تنظيف ===
+  // === تنظيف الموارد ===
   // ============================================
 
   Future<void> _cleanup() async {
+    _disconnectRecoveryTimer?.cancel();
+    _disconnectRecoveryTimer = null;
+
     if (_localStream != null) {
       for (final track in _localStream!.getTracks()) {
         try {
@@ -1143,6 +1150,7 @@ class RtcService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disconnectRecoveryTimer?.cancel();
     _messageSub?.cancel();
     _callkitSub?.cancel();
     _cleanup();
