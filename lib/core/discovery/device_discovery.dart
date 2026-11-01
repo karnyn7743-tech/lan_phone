@@ -17,7 +17,11 @@ import 'discovered_device.dart';
 
 /// ============================================================
 /// خدمة اكتشاف الأجهزة على الشبكة المحلية
-/// مع دعم رقم الاتصال (مثل رقم SIM) وقفل Wi-Fi Multicast
+/// تدعم:
+/// 1. UDP Broadcast العام والفرعي (Subnet Broadcast)
+/// 2. Multicast
+/// 3. Subnet Ping/Scan لتخطي قيود الرواتر ومكررات الإشارة
+/// 4. ثبات الهوية عبر AndroidId / SharedPreferences
 /// ============================================================
 class DeviceDiscovery extends ChangeNotifier {
   DeviceDiscovery();
@@ -45,8 +49,8 @@ class DeviceDiscovery extends ChangeNotifier {
   bool _isRunning = false;
   bool get isRunning => _isRunning;
 
-  // يمنع تنفيذ start أكثر من مرة بالتزامن أثناء انتظار الأذونات أو تهيئة الشبكة.
   bool _isStarting = false;
+  bool _isScanningSubnet = false;
 
   final Map<String, DiscoveredDevice> _devices = {};
   List<DiscoveredDevice> get devices => _devices.values.toList();
@@ -79,19 +83,16 @@ class DeviceDiscovery extends ChangeNotifier {
     bool multicastLockRequested = false;
 
     try {
-      // لا تبدأ اكتشاف الشبكة قبل منح الإذن المناسب لإصدار Android.
-      // يتم توحيد طلب الإذن عبر PermissionService لتجنب الطلبات المتعارضة.
       final permissionGranted = await PermissionService.requestDiscovery();
       if (!permissionGranted) {
         debugPrint('[Discovery] Required discovery permission was not granted');
         return;
       }
 
-      // فتح قفل Multicast لمنع أندرويد من حجب حزم UDP.
       multicastLockRequested = true;
       await _acquireMulticastLock();
 
-      // 1) تحميل/إنشاء الهوية
+      // 1) تحميل/إنشاء الهوية الثابتة
       await _loadOrCreateIdentity();
 
       // 2) اكتشاف IP المحلي
@@ -99,7 +100,7 @@ class DeviceDiscovery extends ChangeNotifier {
       debugPrint('[Discovery] Local IP: $_localIp');
       debugPrint('[Discovery] Device: $_deviceName (#$_deviceNumber)');
 
-      // 3) فتح UDP
+      // 3) فتح مقبس UDP
       await _openUdpSocket();
 
       // 4) بدء mDNS
@@ -108,13 +109,17 @@ class DeviceDiscovery extends ChangeNotifier {
       // 5) تحميل الأجهزة المخزنة
       await _loadStoredDevices();
 
-      // 6) نبضة أولى
+      // 6) نبضة أولى للبث والمسح الموجه
       _sendAnnounce();
+      triggerSubnetScan();
 
-      // 7) المؤقتات
+      // 7) المؤقتات الدورية
       _announceTimer = Timer.periodic(
         const Duration(seconds: AppConstants.announceIntervalSeconds),
-        (_) => _sendAnnounce(),
+        (_) async {
+          _localIp = await _detectLocalIp();
+          _sendAnnounce();
+        },
       );
 
       _cleanupTimer = Timer.periodic(
@@ -137,7 +142,6 @@ class DeviceDiscovery extends ChangeNotifier {
     } catch (e) {
       debugPrint('[Discovery] Failed to start: $e');
 
-      // تنظيف أي موارد فُتحت جزئيًا حتى لا يبقى الاكتشاف في حالة نصف مهيأة.
       _announceTimer?.cancel();
       _cleanupTimer?.cancel();
       _presenceTimer?.cancel();
@@ -218,66 +222,47 @@ class DeviceDiscovery extends ChangeNotifier {
   }
 
   // ============================================
-  // === الهوية (Identity + Number) ===
+  // === الهوية الثابتة (Identity + Number) ===
   // ============================================
 
-  /// ✅ توليد/تحميل معرّف الجهاز الثابت
-  ///
-  /// يستخدم:
-  ///   - Android: ANDROID_ID (Settings.Secure.ANDROID_ID) — ثابت عبر إعادة التثبيت
-  ///   - iOS: identifierForVendor (IDFV) — ثابت طالما يوجد تطبيق من نفس المطوّر
-  ///   - Fallback: UUID مخزّن في SharedPreferences (يُستخدم فقط لو فشل كل شيء)
   Future<void> _loadOrCreateIdentity() async {
     final prefs = await SharedPreferences.getInstance();
-
-    // 1) معرّف الجهاز الثابت
     String id = '';
 
     try {
       if (Platform.isAndroid) {
-        // ✅ ANDROID_ID الرسمي — ثابت عبر إعادة التثبيت
-        final androidId = await AndroidId().getId();
+        final androidId = await const AndroidId().getId();
         if (androidId != null && androidId.isNotEmpty) {
           id = androidId;
           debugPrint('[Discovery] ✅ ANDROID_ID: $id');
-        } else {
-          debugPrint('[Discovery] ⚠️ ANDROID_ID returned null/empty');
         }
       } else if (Platform.isIOS) {
-        // ✅ identifierForVendor — ثابت طالما يوجد تطبيق من نفس المطوّر
         final iosInfo = await DeviceInfoPlugin().iosInfo;
         final idfv = iosInfo.identifierForVendor;
         if (idfv != null && idfv.isNotEmpty) {
           id = idfv;
           debugPrint('[Discovery] ✅ IDFV: $id');
-        } else {
-          debugPrint('[Discovery] ⚠️ IDFV returned null/empty');
         }
+      } else if (Platform.isWindows) {
+        final winInfo = await DeviceInfoPlugin().windowsInfo;
+        id = winInfo.deviceId;
       }
     } catch (e) {
       debugPrint('[Discovery] Error getting stable ID: $e');
     }
 
-    // 2) Fallback — يُستخدم فقط لو فشل ANDROID_ID/IDFV (نادر جدًا)
     if (id.isEmpty) {
       final stored = prefs.getString(AppConstants.keyDeviceId);
       if (stored != null && stored.isNotEmpty) {
         id = stored;
-        debugPrint('[Discovery] ℹ️ Using stored fallback ID: $id');
       } else {
         id = const Uuid().v4();
-        debugPrint(
-          '[Discovery] ⚠️ WARNING: Using random UUID fallback. '
-          'ID will change on reinstall.',
-        );
       }
     }
 
     _deviceId = id;
     await prefs.setString(AppConstants.keyDeviceId, _deviceId);
-    debugPrint('[Discovery] Final Device ID: $_deviceId');
 
-    // 3) اسم الجهاز
     var name = prefs.getString(AppConstants.keyDeviceName);
     if (name == null || name.isEmpty) {
       final shortId = _deviceId.length >= 4
@@ -288,17 +273,14 @@ class DeviceDiscovery extends ChangeNotifier {
     }
     _deviceName = name;
 
-    // 4) رقم الاتصال
     var number = prefs.getString(AppConstants.keyDeviceNumber);
     if (number == null || number.isEmpty) {
       number = await _generateUniqueNumber();
       await prefs.setString(AppConstants.keyDeviceNumber, number);
-      debugPrint('[Discovery] Generated number: $number');
     }
     _deviceNumber = number;
   }
 
-  /// توليد رقم اتصال فريد (4 أرقام)
   Future<String> _generateUniqueNumber() async {
     final usedNumbers = <String>{};
 
@@ -325,14 +307,11 @@ class DeviceDiscovery extends ChangeNotifier {
     }
 
     final hash = _deviceId.hashCode.abs();
-    final fallback = (AppConstants.numberMin +
+    return (AppConstants.numberMin +
             (hash % (AppConstants.numberMax - AppConstants.numberMin + 1)))
         .toString();
-    debugPrint('[Discovery] Fallback number: $fallback');
-    return fallback;
   }
 
-  /// تحديث اسم الجهاز
   Future<void> updateDeviceName(String newName) async {
     if (newName.trim().isEmpty) return;
     _deviceName = newName.trim();
@@ -342,7 +321,6 @@ class DeviceDiscovery extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// تحديث رقم الجهاز (من الإعدادات)
   Future<bool> updateDeviceNumber(String newNumber) async {
     if (newNumber.length != 4) return false;
     final parsed = int.tryParse(newNumber);
@@ -354,10 +332,7 @@ class DeviceDiscovery extends ChangeNotifier {
 
     final usedByOther = _numberToDeviceId.containsKey(newNumber) &&
         _numberToDeviceId[newNumber] != _deviceId;
-    if (usedByOther) {
-      debugPrint('[Discovery] Number $newNumber already in use');
-      return false;
-    }
+    if (usedByOther) return false;
 
     try {
       final dbUsed = await DatabaseHelper.instance.isNumberUsedByOther(
@@ -376,7 +351,7 @@ class DeviceDiscovery extends ChangeNotifier {
   }
 
   // ============================================
-  // === كشف IP المحلي ===
+  // === كشف IP المحلي وعنوان النطاق الفرعي ===
   // ============================================
 
   Future<String> _detectLocalIp() async {
@@ -409,6 +384,14 @@ class DeviceDiscovery extends ChangeNotifier {
       debugPrint('[Discovery] detectLocalIp error: $e');
       return '127.0.0.1';
     }
+  }
+
+  String? _getSubnetBroadcastIp(String ip) {
+    final parts = ip.split('.');
+    if (parts.length == 4 && parts[0] != '127') {
+      return '${parts[0]}.${parts[1]}.${parts[2]}.255';
+    }
+    return null;
   }
 
   bool _isPrivateIp(String ip) {
@@ -467,11 +450,11 @@ class DeviceDiscovery extends ChangeNotifier {
   }
 
   // ============================================
-  // === إرسال النبضات ===
+  // === إرسال النبضات والمسح الموجه (Subnet Scan) ===
   // ============================================
 
-  void _sendAnnounce() {
-    _broadcast({
+  Map<String, dynamic> _buildAnnouncePayload() {
+    return {
       'type': AppConstants.msgAnnounce,
       'deviceId': _deviceId,
       'number': _deviceNumber,
@@ -481,7 +464,12 @@ class DeviceDiscovery extends ChangeNotifier {
       'messagePort': AppConstants.messagePort,
       'capabilities': ['text', 'voice', 'video', 'media'],
       'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
+    };
+  }
+
+  void _sendAnnounce() {
+    final payload = _buildAnnouncePayload();
+    _broadcast(payload);
   }
 
   void _sendBye() {
@@ -498,19 +486,69 @@ class DeviceDiscovery extends ChangeNotifier {
     try {
       final data = utf8.encode(jsonEncode(payload));
 
+      // 1. بث عام
       _udpSocket!.send(
         data,
         InternetAddress(AppConstants.broadcastAddress),
         AppConstants.discoveryPort,
       );
 
+      // 2. بث Multicast
       _udpSocket!.send(
         data,
         InternetAddress(AppConstants.multicastAddress),
         AppConstants.discoveryPort,
       );
+
+      // 3. بث Subnet الموجه لتجاوز عزل الراوتر
+      final subnetBroadcast = _getSubnetBroadcastIp(_localIp);
+      if (subnetBroadcast != null) {
+        _udpSocket!.send(
+          data,
+          InternetAddress(subnetBroadcast),
+          AppConstants.discoveryPort,
+        );
+      }
     } catch (e) {
       debugPrint('[Discovery] broadcast error: $e');
+    }
+  }
+
+  /// مسح سريع لنطاق IP الفرعي لإجبار الأجهزة غير المرئية بالبث على الرد
+  Future<void> triggerSubnetScan() async {
+    if (_isScanningSubnet || _udpSocket == null || _localIp.startsWith('127.')) {
+      return;
+    }
+
+    _isScanningSubnet = true;
+    try {
+      final parts = _localIp.split('.');
+      if (parts.length != 4) return;
+
+      final subnetPrefix = '${parts[0]}.${parts[1]}.${parts[2]}';
+      final currentHost = int.tryParse(parts[3]) ?? 0;
+      final payloadData = utf8.encode(jsonEncode(_buildAnnouncePayload()));
+
+      // إرسال حزم مباشرة لمجموعات من العناوين على دفعات لتجنب خنق الشبكة
+      for (int i = 1; i <= 254; i++) {
+        if (i == currentHost) continue;
+        final targetIp = '$subnetPrefix.$i';
+        try {
+          _udpSocket?.send(
+            payloadData,
+            InternetAddress(targetIp),
+            AppConstants.discoveryPort,
+          );
+        } catch (_) {}
+
+        if (i % 25 == 0) {
+          await Future.delayed(const Duration(milliseconds: 15));
+        }
+      }
+    } catch (e) {
+      debugPrint('[Discovery] Subnet scan error: $e');
+    } finally {
+      _isScanningSubnet = false;
     }
   }
 
@@ -600,9 +638,19 @@ class DeviceDiscovery extends ChangeNotifier {
 
     if (isNew) {
       debugPrint('[Discovery] New device: $name (#$number) @ $ip');
+      // عند اكتشاف جهاز جديد مباشرة، نرسل رد نبضة موجه إليه ليثبت اتصالنا فوراً
+      _unicastAnnounce(ip);
     }
 
     notifyListeners();
+  }
+
+  void _unicastAnnounce(String targetIp) {
+    if (_udpSocket == null) return;
+    try {
+      final payload = utf8.encode(jsonEncode(_buildAnnouncePayload()));
+      _udpSocket!.send(payload, InternetAddress(targetIp), AppConstants.discoveryPort);
+    } catch (_) {}
   }
 
   Future<void> _handleBye(String deviceId) async {
@@ -778,6 +826,7 @@ class DeviceDiscovery extends ChangeNotifier {
 
   void refreshNow() {
     _sendAnnounce();
+    triggerSubnetScan();
   }
 
   Future<void> removeDevice(String deviceId) async {
