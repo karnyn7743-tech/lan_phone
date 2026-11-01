@@ -952,7 +952,7 @@ class RtcService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<switchCamera> switchCamera() async {
+  Future<void> switchCamera() async {
     if (_localStream == null) return;
     final videoTracks = _localStream!.getVideoTracks();
     if (videoTracks.isEmpty) return;
