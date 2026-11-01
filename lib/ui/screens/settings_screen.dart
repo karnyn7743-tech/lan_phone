@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:provider/provider.dart';
 
@@ -33,6 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _vibrationEnabled = true;
   bool _soundEnabled = true;
   bool _batteryOptimizationDisabled = false;
+  String _cacheSize = 'جارٍ الحساب...';
 
   @override
   void initState() {
@@ -47,6 +50,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final batteryStatus =
           await ph.Permission.ignoreBatteryOptimizations.status;
 
+      final cacheSizeStr = await _calculateCacheSize();
+
       if (!mounted) return;
       setState(() {
         _deviceName = discovery.deviceName;
@@ -54,12 +59,118 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _deviceNumber = discovery.deviceNumber;
         _localIp = discovery.localIp;
         _batteryOptimizationDisabled = batteryStatus.isGranted;
+        _cacheSize = cacheSizeStr;
         _isLoading = false;
       });
     } catch (e) {
       debugPrint('[Settings] loadSettings error: $e');
       if (!mounted) return;
       setState(() => _isLoading = false);
+    }
+  }
+
+  // ============================================
+  // === حساب وتنظيف الذاكرة المؤقتة والوسائط ===
+  // ============================================
+
+  Future<String> _calculateCacheSize() async {
+    try {
+      int totalBytes = 0;
+
+      // 1. مجلد التخزين المؤقت العام
+      final tempDir = await getTemporaryDirectory();
+      if (tempDir.existsSync()) {
+        totalBytes += _getDirectorySize(tempDir);
+      }
+
+      // 2. مجلدات الوسائط المؤقتة للتسجيل والمراسلة
+      final appDir = await getApplicationDocumentsDirectory();
+      final recordedAudios = Directory('${appDir.path}/recorded_audios');
+      if (recordedAudios.existsSync()) {
+        totalBytes += _getDirectorySize(recordedAudios);
+      }
+
+      if (totalBytes < 1024) return '$totalBytes B';
+      if (totalBytes < 1024 * 1024) {
+        return '${(totalBytes / 1024).toStringAsFixed(1)} KB';
+      }
+      return '${(totalBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    } catch (e) {
+      return '0.0 MB';
+    }
+  }
+
+  int _getDirectorySize(Directory dir) {
+    int size = 0;
+    try {
+      if (dir.existsSync()) {
+        dir.listSync(recursive: true, followLinks: false).forEach((entity) {
+          if (entity is File) {
+            size += entity.lengthSync();
+          }
+        });
+      }
+    } catch (_) {}
+    return size;
+  }
+
+  Future<void> _clearMediaCache() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(
+          Icons.cleaning_services_outlined,
+          size: 40,
+          color: AppTheme.primaryColor,
+        ),
+        title: const Text('تنظيف الذاكرة المؤقتة'),
+        content: const Text(
+          'سيتم مسح الملفات والتسجيلات الصوتية المؤقتة لتفريغ مساحة التخزين.\nلن يتم حذف نصوص المحادثات وسجل المكالمات.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('تنظيف الآن'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      // 1. مسح مجلد الـ Cache
+      final tempDir = await getTemporaryDirectory();
+      if (tempDir.existsSync()) {
+        final entries = tempDir.listSync();
+        for (final entry in entries) {
+          try {
+            entry.deleteSync(recursive: true);
+          } catch (_) {}
+        }
+      }
+
+      // 2. مسح مجلد التسجيلات الصوتية
+      final appDir = await getApplicationDocumentsDirectory();
+      final audioDir = Directory('${appDir.path}/recorded_audios');
+      if (audioDir.existsSync()) {
+        try {
+          audioDir.deleteSync(recursive: true);
+        } catch (_) {}
+      }
+
+      final newSize = await _calculateCacheSize();
+      if (!mounted) return;
+      setState(() => _cacheSize = newSize);
+      _showSnack('تم تفريغ الذاكرة المؤقتة بنجاح', isSuccess: true);
+    } catch (e) {
+      debugPrint('[Settings] clearMediaCache error: $e');
+      if (!mounted) return;
+      _showSnack('فشل تنظيف الذاكرة المؤقتة');
     }
   }
 
@@ -235,13 +346,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ============================================
-  // === قفل التطبيق (جديد) ===
+  // === قفل التطبيق ===
   // ============================================
 
   Future<void> _toggleLock(bool value) async {
     final lockService = context.read<LockService>();
 
-    // إذا لم تكن البصمة متوفرة → أظهر تنبيهًا
     if (value && !lockService.available) {
       await showDialog<void>(
         context: context,
@@ -632,7 +742,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _buildReliabilitySection(),
                 const _SectionTitle(title: 'معلومات الشبكة'),
                 _buildNetworkSection(),
-                const _SectionTitle(title: 'البيانات'),
+                const _SectionTitle(title: 'البيانات والتخزين'),
                 _buildDataSection(),
                 const _SectionTitle(title: 'عن التطبيق'),
                 _buildAboutSection(),
@@ -643,7 +753,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ============================================
-  // === قسم قفل التطبيق (جديد) ===
+  // === قسم قفل التطبيق ===
   // ============================================
 
   Widget _buildLockSection() {
@@ -651,7 +761,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return _SettingsCard(
       children: [
-        // التفعيل
         SwitchListTile(
           value: lockService.enabled,
           onChanged: _toggleLock,
@@ -661,21 +770,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ? lockService.biometricDescription
                 : 'البصمة غير متوفرة على هذا الجهاز',
             style: TextStyle(
-              color: lockService.available
-                  ? null
-                  : AppTheme.warningColor,
+              color: lockService.available ? null : AppTheme.warningColor,
             ),
           ),
           secondary: Icon(
             lockService.enabled ? Icons.lock : Icons.lock_open_outlined,
-            color: lockService.enabled
-                ? AppTheme.primaryColor
-                : null,
+            color: lockService.enabled ? AppTheme.primaryColor : null,
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 8),
         ),
-
-        // تأخير القفل (يظهر فقط عند التفعيل)
         if (lockService.enabled)
           ListTile(
             leading: const Icon(Icons.timer_outlined),
@@ -690,8 +793,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Icons.chevron_left),
             onTap: () => _selectLockDelay(lockService.delay),
           ),
-
-        // زر قفل الآن (يدوي)
         if (lockService.enabled)
           ListTile(
             leading: const Icon(
@@ -706,8 +807,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Navigator.of(context).popUntil((r) => r.isFirst);
             },
           ),
-
-        // تلميح عندما لا تتوفر البصمة
         if (!lockService.available)
           Container(
             margin: const EdgeInsets.fromLTRB(16, 4, 16, 12),
@@ -1093,12 +1192,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _min(int a, int b) => a < b ? a : b;
 
   // ============================================
-  // === البيانات ===
+  // === البيانات والتخزين ===
   // ============================================
 
   Widget _buildDataSection() {
     return _SettingsCard(
       children: [
+        ListTile(
+          leading: const Icon(
+            Icons.cleaning_services_outlined,
+            color: AppTheme.primaryColor,
+          ),
+          title: const Text('تنظيف الذاكرة المؤقتة للوسائط'),
+          subtitle: Text('حجم التخزين المؤقت: $_cacheSize'),
+          trailing: const Icon(Icons.chevron_left),
+          onTap: _clearMediaCache,
+        ),
         ListTile(
           leading: const Icon(
             Icons.delete_forever_outlined,
@@ -1108,7 +1217,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'إعادة تعيين التطبيق',
             style: TextStyle(color: AppTheme.errorColor),
           ),
-          subtitle: const Text('حذف كل المحادثات والبيانات'),
+          subtitle: const Text('حذف كل المحادثات والبيانات بالكامل'),
           onTap: _clearAllData,
         ),
       ],
